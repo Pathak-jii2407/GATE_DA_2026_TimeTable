@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GATE DA 2026 — Study Tracker</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1226;
+      --card: #171a34;
+      --soft: #1f2350;
+      --text: #e8ebff;
+      --muted: #b6baf0;
+      --acc: #7c3aed;
+      --acc2: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --ring: rgba(124, 58, 237, .35);
+    }
+    [data-theme="light"] {
+      --bg: #f6f7ff;
+      --card: #ffffff;
+      --soft: #eef0ff;
+      --text: #161a42;
+      --muted: #4b4f7a;
+      --acc: #6d28d9;
+      --acc2: #059669;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --ring: rgba(109, 40, 217, .25);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; background: linear-gradient(180deg, var(--bg), #0b0e22); color: var(--text); font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    header { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .title { display: flex; align-items: center; gap: 12px; }
+    .title h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); font-weight: 800; letter-spacing: .3px; }
+    .pill { background: linear-gradient(90deg, var(--acc), #4f46e5); color: white; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .grid { display: grid; gap: 14px; }
+    .grid.cols-3 { grid-template-columns: 1.2fr .9fr .9fr; }
+    .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 980px) { .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; } }
+
+    .card { background: linear-gradient(180deg, var(--card), #121533); border: 1px solid #272a55; border-radius: 18px; box-shadow: 0 8px 30px rgba(11, 14, 34, .3); padding: 16px; transition: transform 0.3s ease; }
+    .card h2 { margin: 0 0 10px; font-size: 18px; }
+    .sub { color: var(--muted); font-size: 13px; }
+
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn { border: none; background: linear-gradient(90deg, var(--soft), #111432); color: var(--text); padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: inset 0 0 0 1px #2a2e60; }
+    .btn.primary { background: linear-gradient(90deg, #7c3aed, #4f46e5); box-shadow: 0 6px 18px var(--ring); }
+    .btn.green { background: linear-gradient(90deg, #10b981, #059669); box-shadow: 0 6px 18px rgba(16, 185, 129, .35); }
+    .btn.red { background: linear-gradient(90deg, #ef4444, #b91c1c); box-shadow: 0 6px 18px rgba(239, 68, 68, .35); }
+    .btn:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
+    nav { display: flex; gap: 8px; flex-wrap: wrap; transition: opacity 0.3s ease; }
+    .tab { padding: 10px 14px; border-radius: 12px; background: linear-gradient(180deg, var(--soft), #0f1233); border: 1px solid #2a2e60; color: var(--text); cursor: pointer; font-weight: 700; }
+    .tab.active { background: linear-gradient(90deg, #7c3aed, #4f46e5); }
+    .tab:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
+    .tasks { display: flex; flex-direction: column; gap: 12px; }
+    .task-card { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; padding: 12px; border-radius: 14px; background: linear-gradient(180deg, #131740, #0e1030); border: 1px solid #2a2e60; cursor: move; }
+    .task-card.dragging { opacity: 0.5; transform: scale(0.98); }
+    .task-title { font-weight: 700; }
+    .badge { font-size: 11px; padding: 4px 8px; border-radius: 999px; background: rgba(124, 58, 237, .15); border: 1px solid #3b2a78; }
+    .task-note { width: 100%; padding: 8px; border-radius: 10px; border: 1px solid #2a2e60; background: #0b0e2b; color: var(--text); min-height: 40px; }
+    .small { font-size: 12px; color: var(--muted); }
+
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { border-bottom: 1px dashed #2a2e60; padding: 10px; text-align: left; }
+    .kpi { display: flex; gap: 14px; flex-wrap: wrap; }
+    .kpi .k { flex: 1; min-width: 160px; border-radius: 16px; padding: 14px; background: linear-gradient(180deg, #131740, #0e1134); border: 1px solid #2a2e60; }
+    .k .v { font-weight: 800; font-size: 22px; }
+
+    .chip { background: #0b0f2d; border: 1px solid #2a2e60; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+    .flex { display: flex; gap: 10px; align-items: center; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .right { margin-left: auto; }
+    .sep { height: 1px; background: #2a2e60; margin: 8px 0; }
+    .mt8 { margin-top: 8px; }
+    .mt12 { margin-top: 12px; }
+    .mt16 { margin-top: 16px; }
+    .mb8 { margin-bottom: 8px; }
+
+    input[type="number"], select { background: #0b0e2b; color: var(--text); border: 1px solid #2a2e60; border-radius: 10px; padding: 8px; }
+    input[type="text"], textarea, [contenteditable] { background: #0b0e2b; color: var(--text); border: 1px solid #2a2e60; border-radius: 10px; padding: 8px; }
+    label { font-size: 12px; color: var(--muted); }
+
+    .progress { height: 10px; background: #0b0e2b; border-radius: 999px; border: 1px solid #2a2e60; overflow: hidden; }
+    .progress > div { height: 100%; background: linear-gradient(90deg, #10b981, #06b6d4); transition: width 0.3s ease; }
+
+    .syllabus .group { margin-bottom: 14px; }
+    .syllabus .group h3 { margin: 0 0 6px; font-size: 15px; }
+    .syllabus .topic { display: inline-flex; align-items: center; margin: 4px 6px 0 0; padding: 6px 10px; border-radius: 999px; background: #10143a; border: 1px solid #2a2e60; font-size: 12px; }
+    .syllabus .topic input { margin-right: 6px; }
+
+    .toast { position: fixed; right: 16px; bottom: 16px; background: #10143a; border: 1px solid #2a2e60; color: var(--text); padding: 12px 14px; border-radius: 14px; box-shadow: 0 10px 24px rgba(0, 0, 0, .35); opacity: 0; transform: translateY(10px); transition: opacity 0.25s ease, transform 0.25s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="app" id="app" data-theme="dark">
+    <header>
+      <div class="title">
+        <div class="pill">GATE DA 2026</div>
+        <h1>Study Tracker · Data Science & AI</h1>
+      </div>
+      <div class="row right">
+        <button class="btn" id="themeToggle" aria-label="Toggle theme">🌗 Theme</button>
+        <button class="btn" id="focusToggle" aria-label="Toggle focus mode">🎯 Focus</button>
+        <span class="chip" id="todayChip">📅</span>
+      </div>
+    </header>
+
+    <nav class="row mb8" role="tablist">
+      <button class="tab active" data-tab="today" role="tab" aria-selected="true">Today</button>
+      <button class="tab" data-tab="syllabus" role="tab">Syllabus</button>
+      <button class="tab" data-tab="log" role="tab">Log</button>
+      <button class="tab" data-tab="dashboard" role="tab">Dashboard</button>
+      <button class="tab" data-tab="settings" role="tab">Settings</button>
+    </nav>
+
+    <div class="grid cols-3">
+      <!-- TODAY -->
+      <section id="today" class="card" style="grid-column: 1 / span 2;" role="tabpanel">
+        <h2>Today's Plan <span class="sub" id="cycleText"></span></h2>
+        <div class="kpi">
+          <div class="k"><div class="small">Goal</div><div class="v" id="kGoal">6h</div></div>
+          <div class="k"><div class="small">Today</div><div class="v" id="kToday">0.0h</div><div class="progress mt8"><div id="goalBar" style="width:0%"></div></div></div>
+          <div class="k"><div class="small">Completed</div><div class="v" id="kDone">0</div></div>
+          <div class="k"><div class="small">Streak</div><div class="v" id="kStreak">0</div></div>
+          <div class="k"><div class="small">Avg Hours/Day</div><div class="v" id="kAvgHours">0.0h</div></div>
+        </div>
+        <div class="sep"></div>
+        <div class="toolbar mt8">
+          <button class="btn primary" id="saveBtn" aria-label="Save log">💾 Save Log (Ctrl+S)</button>
+          <button class="btn green" id="nextDayBtn" aria-label="Next day">➡ Next Day</button>
+          <button class="btn" id="refreshToday" aria-label="Refresh tasks">🔄 Refresh</button>
+          <button class="btn" id="clearToday" aria-label="Clear inputs">🧹 Clear Inputs</button>
+        </div>
+        <div class="tasks mt12" id="taskList" role="list"></div>
+      </section>
+
+      <!-- SYLLABUS -->
+      <section id="syllabus" class="card" style="display:none" role="tabpanel">
+        <h2>DA Syllabus Map</h2>
+        <div class="syllabus" id="syllabusBox"></div>
+      </section>
+
+      <!-- LOG -->
+      <section id="log" class="card" style="grid-column:1 / span 2; display:none" role="tabpanel">
+        <h2>Logs</h2>
+        <div class="toolbar">
+          <button class="btn" id="exportCsv" aria-label="Export logs as CSV">⬇ Export CSV</button>
+          <button class="btn" id="importJson" aria-label="Import logs from JSON">⬆ Import JSON</button>
+          <button class="btn red" id="clearLogs" aria-label="Clear all logs">🗑 Clear All Logs</button>
+        </div>
+        <table class="table mt12" role="grid">
+          <thead><tr><th>Date</th><th>Subject</th><th>Hours</th><th>Done</th><th>Priority</th><th>Mode</th><th>Pomodoros</th><th>Notes</th></tr></thead>
+          <tbody id="logTable"></tbody>
+        </table>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section id="dashboard" class="card" style="display:none" role="tabpanel">
+        <h2>Dashboard</h2>
+        <div class="grid cols-2">
+          <div class="card">
+            <h3>Daily Hours</h3>
+            <canvas id="dailyChart" height="160"></canvas>
+          </div>
+          <div class="card">
+            <h3>Hours by Subject</h3>
+            <canvas id="subjectChart" height="160"></canvas>
+          </div>
+          <div class="card">
+            <h3>Completion Share</h3>
+            <canvas id="completionChart" height="160"></canvas>
+          </div>
+          <div class="card">
+            <h3>Progress by Category</h3>
+            <canvas id="categoryChart" height="160"></canvas>
+          </div>
+          <div class="card">
+            <h3>Last 7 Days</h3>
+            <canvas id="last7Chart" height="160"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="settings" class="card" style="display:none" role="tabpanel">
+        <h2>Settings</h2>
+        <div class="grid cols-2">
+          <div class="card">
+            <h3>General</h3>
+            <div class="row mt8">
+              <label for="dailyGoal">Daily Goal (hrs)</label>
+              <input type="number" id="dailyGoal" min="0" step="0.5" value="6" aria-label="Daily goal hours" />
+              <label for="pomoWork">Pomodoro Work/Break (min)</label>
+              <input type="number" id="pomoWork" min="1" value="25" aria-label="Pomodoro work minutes" /> /
+              <input type="number" id="pomoBreak" min="1" value="5" aria-label="Pomodoro break minutes" /> min
+            </div>
+            <div class="row mt8">
+              <button class="btn green" id="saveSettings" aria-label="Save settings">Save</button>
+              <button class="btn" id="exportJson" aria-label="Export configuration and plan">Export Config+Plan</button>
+              <button class="btn" id="resetPlan" aria-label="Reset 8-day plan">Reset 8-Day Plan</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>8-Day Plan Editor</h3>
+            <div id="planEditor"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="alert">Saved</div>
+
+  <script>
+  // ------------------------
+  // Data & Defaults
+  // ------------------------
+  const SYLLABUS = {
+    "Probability & Statistics": [
+      "Counting (perm/comb)", "Axioms, sample space, events",
+      "Independence, mutual exclusivity", "Marginal/conditional/joint prob",
+      "Bayes theorem", "Cond. expectation & variance",
+      "Mean/Median/Mode/SD", "Correlation & Covariance",
+      "RVs: discrete/pmf, continuous/pdf, CDF",
+      "Distributions: Uniform, Bernoulli, Binomial, Poisson, Exponential, Normal, Standard Normal, t, Chi-squared",
+      "CLT", "Confidence intervals", "z/t/chi-squared tests"
+    ],
+    "Linear Algebra": [
+      "Vector spaces & subspaces", "Linear dependence/independence",
+      "Matrices (projection/orthogonal/idempotent/partition)",
+      "Quadratic forms", "Systems & Gaussian elimination",
+      "Eigenvalues/Eigenvectors", "Determinant, Rank, Nullity, Projections",
+      "LU, SVD"
+    ],
+    "Calculus & Optimization": [
+      "Single variable functions", "Limit/Continuity/Differentiability",
+      "Taylor series", "Maxima/Minima", "Single-variable optimization"
+    ],
+    "Programming & DSA": [
+      "Python basics", "Stacks/Queues/Linked Lists/Trees/Hash Tables",
+      "Search: Linear/Binary", "Sorting: Selection/Bubble/Insertion",
+      "Divide-Conquer: Merge/Quick", "Graph intro & Traversals/Shortest path"
+    ],
+    "DBMS & Warehousing": [
+      "ER model", "Relational algebra & tuple calculus", "SQL",
+      "Integrity constraints", "Normal forms", "File org & Indexing",
+      "Data types & transformation: normalization, discretization, sampling, compression",
+      "Warehouse: schema, hierarchies, measures"
+    ],
+    "ML — Supervised": [
+      "Regression (simple/multiple/ridge)", "Logistic regression",
+      "k-NN", "Naive Bayes", "LDA",
+      "SVM", "Decision Trees",
+      "Bias-variance trade-off", "Cross-Validation: LOO, k-folds",
+      "MLP/Feed-forward NN"
+    ],
+    "ML — Unsupervised & PCA": [
+      "Clustering: k-means/k-medoids", "Hierarchical (top-down/bottom-up)",
+      "Single/Complete/Avg-linkage", "Dimensionality Reduction",
+      "PCA"
+    ],
+    "AI (Search/Logic/Uncertainty)": [
+      "Search: Informed/Uninformed/Adversarial",
+      "Logic: Propositional & Predicate",
+      "Uncertainty: Conditional independence, Variable elimination (exact), Sampling (approx.)"
+    ],
+    "Aptitude/Revision/PYQs": [
+      "Aptitude", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Formula/Notes"
+    ]
+  };
+
+  const DEFAULT_PLAN = {
+    1: ["Probability & Statistics", "Programming & DSA", "ML — Supervised", "PYQs: Stats + DSA"],
+    2: ["Linear Algebra", "DBMS & Warehousing", "AI (Search/Logic/Uncertainty)", "PYQs: LA + DBMS"],
+    3: ["Calculus & Optimization", "Programming & DSA", "ML — Supervised", "PYQs: Calc + Algos"],
+    4: ["Probability & Statistics", "Programming & DSA", "AI (Search/Logic/Uncertainty)", "PYQs: Prob + Prog"],
+    5: ["Linear Algebra", "DBMS & Warehousing", "ML — Supervised", "PYQs: LA + DBMS"],
+    6: ["Calculus & Optimization", "Programming & DSA", "ML — Unsupervised & PCA", "PYQs: Opt + Graphs"],
+    7: ["Test: Stats", "Test: LA", "Weak Area Patch", "Formula/Notes"],
+    8: ["Aptitude/Revision/PYQs", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Light Revision"]
+  };
+
+  // localStorage keys
+  const LS = {
+    settings: 'gateda_settings',
+    plan: 'gateda_plan',
+    logs: 'gateda_logs',
+    syllabusProgress: 'gateda_syllabus_progress'
+  };
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // Settings model
+  let settings = load(LS.settings, {
+    theme: 'dark',
+    dailyGoal: 6,
+    pomoWork: 25,
+    pomoBreak: 5,
+    startDate: todayISO,
+    xp: 0,
+    badges: []
+  });
+  let plan = load(LS.plan, DEFAULT_PLAN);
+  let logs = load(LS.logs, []);
+  let syllabusProgress = load(LS.syllabusProgress, {});
+
+  // ------------------------
+  // Helpers
+  // ------------------------
+  function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { console.error('Save failed:', e); } }
+  function load(key, def) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? def; } catch { return def; } }
+  function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+  function cycleDay() { const s = new Date(settings.startDate), d = new Date(); const diff = Math.floor((d - s) / (1000 * 60 * 60 * 24)); return (diff % 8) + 1; }
+  function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+  function sum(a) { return a.reduce((x, y) => x + y, 0); }
+  function fmtTime(ms) {
+    let s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60); s -= m * 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  function debounce(fn, ms) {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  // ------------------------
+  // UI Init
+  // ------------------------
+  const appEl = document.getElementById('app');
+  appEl.dataset.theme = settings.theme;
+  document.getElementById('todayChip').textContent = '📅 ' + todayISO;
+  document.getElementById('kGoal').textContent = settings.dailyGoal + 'h';
+  document.getElementById('dailyGoal').value = settings.dailyGoal;
+  document.getElementById('pomoWork').value = settings.pomoWork;
+  document.getElementById('pomoBreak').value = settings.pomoBreak;
+
+  // Tabs with accessibility
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const id = btn.dataset.tab;
+      ['today', 'syllabus', 'log', 'dashboard', 'settings'].forEach(x => {
+        document.getElementById(x).style.display = x === id ? 'block' : 'none';
+      });
+      if (id === 'dashboard') drawCharts();
+      if (id === 'log') renderLogTable();
+      if (id === 'syllabus') renderSyllabus();
+      if (id === 'settings') renderPlanEditor();
+    });
+  });
+
+  // Theme toggle & Focus mode
+  document.getElementById('themeToggle').onclick = () => {
+    settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+    appEl.dataset.theme = settings.theme;
+    save(LS.settings, settings);
+    toast('Theme switched');
+  };
+  let focus = false;
+  document.getElementById('focusToggle').onclick = () => {
+    focus = !focus;
+    document.body.style.filter = focus ? 'saturate(1.05)' : 'none';
+    document.querySelector('nav').style.display = focus ? 'none' : 'flex';
+    toast(focus ? 'Focus ON — distractions hidden' : 'Focus OFF');
+  };
+
+  // Build Today list with drag-and-drop
+  function subjectsForToday() {
+    const d = cycleDay();
+    const order = load('taskOrder_' + d, plan[d] || []);
+    return order.length ? order : plan[d] || [];
+  }
+
+  const taskList = document.getElementById('taskList');
+  const timers = new Map();
+
+  function renderToday() {
+    document.getElementById('cycleText').textContent = `Day ${cycleDay()} • 8-Day rotating plan`;
+    taskList.innerHTML = '';
+    timers.clear();
+    subjectsForToday().forEach(sub => taskList.appendChild(makeTaskCard(sub)));
+    updateKPIs();
+    enableDragAndDrop();
+    loadDraft();
+  }
+
+  function makeTaskCard(subject) {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.draggable = true;
+    card.setAttribute('role', 'listitem');
+
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="task-title">${subject}</div><div class="small">Max 3h/day per subject</div>`;
+
+    const controls = document.createElement('div');
+    controls.className = 'row';
+    const hours = document.createElement('input');
+    hours.type = 'number';
+    hours.min = 0;
+    hours.max = 3;
+    hours.step = 0.25;
+    hours.value = '0';
+    hours.setAttribute('aria-label', 'Hours studied');
+    hours.addEventListener('input', () => { if (hours.value < 0) hours.value = 0; if (hours.value > 3) hours.value = 3; });
+    const mode = document.createElement('select');
+    ['Deep Work', 'Review', 'Practice', 'PYQs', 'Test'].forEach(m => {
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = m;
+      mode.appendChild(o);
+    });
+    mode.setAttribute('aria-label', 'Study mode');
+    const priority = document.createElement('select');
+    ['Low', 'Medium', 'High'].forEach(p => {
+      const o = document.createElement('option');
+      o.value = p;
+      o.textContent = p;
+      priority.appendChild(o);
+    });
+    priority.setAttribute('aria-label', 'Priority');
+    const done = document.createElement('input');
+    done.type = 'checkbox';
+    done.setAttribute('aria-label', 'Task completed');
+    controls.append(newBadge('Hours'), hours, newBadge('Mode'), mode, newBadge('Priority'), priority, newBadge('Done'), done);
+
+    const timerBox = document.createElement('div');
+    timerBox.className = 'row';
+    const tlabel = document.createElement('span');
+    tlabel.className = 'badge';
+    tlabel.textContent = '00:00:00';
+    const startBtn = btn('▶ Start');
+    const pauseBtn = btn('⏸ Pause');
+    const stopBtn = btn('■ Stop');
+    const pomoChk = document.createElement('input');
+    pomoChk.type = 'checkbox';
+    pomoChk.setAttribute('aria-label', 'Enable Pomodoro');
+    const pomoLbl = document.createElement('span');
+    pomoLbl.className = 'badge';
+    pomoLbl.textContent = '🍅 0';
+    timerBox.append(tlabel, startBtn, pauseBtn, stopBtn, newBadge('Pomodoro'), pomoChk, pomoLbl);
+
+    const notes = document.createElement('div');
+    notes.className = 'task-note';
+    notes.contentEditable = true;
+    notes.setAttribute('aria-label', 'Task notes');
+    notes.innerHTML = 'Notes…';
+    notes.addEventListener('focus', () => { if (notes.innerHTML === 'Notes…') notes.innerHTML = ''; });
+    notes.addEventListener('blur', () => { if (!notes.innerHTML.trim()) notes.innerHTML = 'Notes…'; });
+
+    // Timer logic
+    const state = timers.get(subject) || { running: false, paused: false, start: 0, elapsed: 0, pomos: 0 };
+    timers.set(subject, state);
+
+    startBtn.onclick = () => {
+      if (state.running || state.paused) return;
+      state.running = true;
+      state.start = Date.now() - state.elapsed;
+      tick();
+      toast(`Timer started for ${subject}`);
+    };
+    pauseBtn.onclick = () => {
+      if (!state.running || state.paused) return;
+      state.paused = true;
+      state.running = false;
+      state.elapsed = Date.now() - state.start;
+      toast(`Timer paused for ${subject}`);
+    };
+    stopBtn.onclick = () => {
+      if (!state.running && !state.paused) return;
+      state.running = false;
+      state.paused = false;
+      state.elapsed = Date.now() - state.start;
+      const hrs = Math.min(3, Math.round((state.elapsed / 3600000) * 100) / 100);
+      hours.value = Math.max(parseFloat(hours.value || 0), hrs);
+      updateKPIs();
+      saveDraft();
+      toast(`Timer stopped for ${subject}`);
+    };
+
+    function tick() {
+      if (!state.running) return;
+      state.elapsed = Date.now() - state.start;
+      tlabel.textContent = fmtTime(state.elapsed);
+      if (pomoChk.checked) {
+        const work = settings.pomoWork * 60 * 1000, brk = settings.pomoBreak * 60 * 1000, cyc = work + brk;
+        const e = Math.floor(state.elapsed / cyc);
+        if (e > state.pomos) {
+          state.pomos = e;
+          pomoLbl.textContent = '🍅 ' + state.pomos;
+          notify(`Pomodoro complete for ${subject}`);
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // Debounced input handling
+    const debouncedSave = debounce(() => { updateKPIs(); saveDraft(); }, 300);
+    [hours, mode, priority, done, notes, pomoChk].forEach(el => el.addEventListener('input', debouncedSave));
+
+    // Drag-and-drop events
+    card.addEventListener('dragstart', () => card.classList.add('dragging'));
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+    // Store refs
+    card._refs = { subject, hours, mode, priority, done, notes, state };
+    card.append(left, controls, timerBox, notes);
+    return card;
+  }
+
+  function newBadge(txt) { const s = document.createElement('span'); s.className = 'badge'; s.textContent = txt; return s; }
+  function btn(txt) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = txt; b.setAttribute('aria-label', txt); return b; }
+
+  // Drag-and-Drop for Task Ordering
+  function enableDragAndDrop() {
+    taskList.addEventListener('dragover', e => {
+      e.preventDefault();
+      const afterElement = getDragAfterElement(taskList, e.clientY);
+      const dragging = document.querySelector('.dragging');
+      if (afterElement == null) {
+        taskList.appendChild(dragging);
+      } else {
+        taskList.insertBefore(dragging, afterElement);
+      }
+    });
+    taskList.addEventListener('drop', () => {
+      const order = [...taskList.querySelectorAll('.task-card')].map(c => c._refs.subject);
+      save('taskOrder_' + cycleDay(), order);
+    });
+  }
+
+  function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.task-card:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: child };
+      }
+      return closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  // KPIs and Progress
+  function updateKPIs() {
+    const cards = [...document.querySelectorAll('.task-card')];
+    const total = sum(cards.map(c => parseFloat(c._refs.hours.value || 0)));
+    const done = cards.filter(c => c._refs.done.checked).length;
+    document.getElementById('kToday').textContent = fmt(total) + 'h';
+    document.getElementById('kDone').textContent = String(done);
+    const pct = Math.min(100, (total / settings.dailyGoal) * 100);
+    document.getElementById('goalBar').style.width = pct + '%';
+    document.getElementById('kStreak').textContent = String(streakDays());
+    const avgHours = logs.length ? fmt(logs.reduce((a, b) => a + (b.Hours || 0), 0) / Object.keys(groupBy(logs, 'Date')).length) : '0.0';
+    document.getElementById('kAvgHours').textContent = avgHours + 'h';
+  }
+
+  // Save Log
+  function currentRows() {
+    const rows = [];
+    const date = todayISO;
+    document.querySelectorAll('.task-card').forEach(c => {
+      const r = c._refs;
+      const hours = parseFloat(r.hours.value || 0);
+      if (hours > 0 || r.done.checked || r.notes.textContent.trim() !== 'Notes…') {
+        rows.push({
+          Date: date,
+          Subject: r.subject,
+          Completed: r.done.checked,
+          Hours: hours,
+          Notes: r.notes.textContent.trim() === 'Notes…' ? '' : r.notes.textContent.trim(),
+          Priority: r.priority.value,
+          Mode: r.mode.value,
+          Pomodoros: r.state?.pomos || 0,
+          XP: xpFrom(hours, r.done.checked, r.priority.value)
+        });
+      }
+    });
+    return rows;
+  }
+
+  function xpFrom(hours, completed, priority) {
+    const base = Math.round(hours * 10);
+    const bonus = completed ? 10 : 0;
+    const pr = { Low: 0, Medium: 5, High: 10 }[priority] || 0;
+    return base + bonus + pr;
+  }
+
+  function saveLog() {
+    const rows = currentRows();
+    if (!rows.length) {
+      toast('No data to save');
+      return;
+    }
+    logs.push(...rows);
+    save(LS.logs, logs);
+    settings.xp = (settings.xp || 0) + rows.reduce((a, b) => a + b.XP, 0);
+    const totalHours = logs.reduce((a, b) => a + (b.Hours || 0), 0);
+    const badges = new Set(settings.badges || []);
+    [[10, 'Rookie'], [50, 'Committed'], [100, 'Centurion'], [200, 'Marathoner']].forEach(([h, name]) => {
+      if (totalHours >= h) badges.add(name);
+    });
+    settings.badges = [...badges];
+    save(LS.settings, settings);
+    notify('Log saved!');
+    toast('Log saved');
+    renderLogTable();
+    updateKPIs();
+    sessionStorage.removeItem('todayDraft');
+  }
+
+  // Streak
+  function streakDays() {
+    const goal = settings.dailyGoal;
+    const byDate = {};
+    logs.forEach(r => { byDate[r.Date] = (byDate[r.Date] || 0) + (r.Hours || 0); });
+    let cur = new Date();
+    let streak = 0;
+    for (let i = 0; i < 365; i++) {
+      const iso = cur.toISOString().slice(0, 10);
+      if ((byDate[iso] || 0) >= goal) {
+        streak++;
+        cur.setDate(cur.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  // Log Table
+  function renderLogTable() {
+    const tb = document.getElementById('logTable');
+    tb.innerHTML = '';
+    logs.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.Date}</td><td>${r.Subject}</td><td>${fmt(r.Hours || 0)}</td><td>${r.Completed ? '✅' : '—'}</td><td>${r.Priority || ''}</td><td>${r.Mode || ''}</td><td>${r.Pomodoros || 0}</td><td>${(r.Notes || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  // Charts
+  let charts = [];
+  function clearCharts() { charts.forEach(c => c.destroy()); charts = []; }
+  function groupBy(arr, key) {
+    return arr.reduce((acc, item) => {
+      acc[item[key]] = acc[item[key]] || [];
+      acc[item[key]].push(item);
+      return acc;
+    }, {});
+  }
+  function drawCharts() {
+    clearCharts();
+    const byDate = {};
+    const bySubject = {};
+    const byCategory = {};
+    let comp = 0;
+    logs.forEach(r => {
+      byDate[r.Date] = (byDate[r.Date] || 0) + (r.Hours || 0);
+      bySubject[r.Subject] = (bySubject[r.Subject] || 0) + (r.Hours || 0);
+      const cat = Object.keys(SYLLABUS).find(c => SYLLABUS[c].some(t => r.Subject.includes(t))) || 'Other';
+      byCategory[cat] = (byCategory[cat] || 0) + (r.Hours || 0);
+      if (r.Completed) comp++;
+    });
+    const dates = Object.keys(byDate).sort();
+    const hours = dates.map(d => byDate[d]);
+    const chartOptions = {
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { color: getComputedStyle(document.body).getPropertyValue('--text') } }, y: { beginAtZero: true } }
+    };
+    charts.push(new Chart(document.getElementById('dailyChart'), {
+      type: 'line',
+      data: { labels: dates, datasets: [{ label: 'Hours', data: hours, borderColor: '#10b981' }] },
+      options: chartOptions
+    }));
+    charts.push(new Chart(document.getElementById('subjectChart'), {
+      type: 'bar',
+      data: { labels: Object.keys(bySubject), datasets: [{ label: 'Hours', data: Object.values(bySubject), backgroundColor: '#7c3aed' }] },
+      options: chartOptions
+    }));
+    const total = logs.length;
+    charts.push(new Chart(document.getElementById('completionChart'), {
+      type: 'doughnut',
+      data: { labels: ['Completed', 'Pending'], datasets: [{ data: [comp, Math.max(0, total - comp)], backgroundColor: ['#10b981', '#ef4444'] }] },
+      options: {}
+    }));
+    charts.push(new Chart(document.getElementById('categoryChart'), {
+      type: 'bar',
+      data: { labels: Object.keys(byCategory), datasets: [{ label: 'Hours', data: Object.values(byCategory), backgroundColor: '#4f46e5' }] },
+      options: chartOptions
+    }));
+    const last7Dates = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      last7Dates.push(d.toISOString().slice(0, 10));
+    }
+    charts.push(new Chart(document.getElementById('last7Chart'), {
+      type: 'bar',
+      data: { labels: last7Dates, datasets: [{ label: 'Hours', data: last7Dates.map(d => byDate[d] || 0), backgroundColor: '#10b981' }] },
+      options: chartOptions
+    }));
+  }
+
+  // Syllabus Render with Progress
+  function renderSyllabus() {
+    const box = document.getElementById('syllabusBox');
+    box.innerHTML = '';
+    Object.entries(SYLLABUS).forEach(([cat, items]) => {
+      const g = document.createElement('div');
+      g.className = 'group';
+      const h = document.createElement('h3');
+      const completed = items.filter(t => syllabusProgress[`${cat}:${t}`]).length;
+      h.innerHTML = `${cat} <span class="chip">${completed}/${items.length} completed</span>`;
+      g.appendChild(h);
+      items.forEach(t => {
+        const s = document.createElement('span');
+        s.className = 'topic';
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = !!syllabusProgress[`${cat}:${t}`];
+        chk.addEventListener('change', () => {
+          syllabusProgress[`${cat}:${t}`] = chk.checked;
+          save(LS.syllabusProgress, syllabusProgress);
+          renderSyllabus();
+          toast(chk.checked ? `Marked ${t} as completed` : `Unmarked ${t}`);
+        });
+        s.appendChild(chk);
+        s.append(t);
+        g.appendChild(s);
+      });
+      box.appendChild(g);
+    });
+  }
+
+  // Plan Editor
+  function renderPlanEditor() {
+    const host = document.getElementById('planEditor');
+    host.innerHTML = '';
+    for (let d = 1; d <= 8; d++) {
+      const c = document.createElement('div');
+      c.className = 'card';
+      const h = document.createElement('h4');
+      h.textContent = 'Day ' + d;
+      c.appendChild(h);
+      const area = document.createElement('textarea');
+      area.style.width = '100%';
+      area.rows = 3;
+      area.value = (plan[d] || []).join('\n');
+      c.appendChild(area);
+      const saveBtn = btn('Save Day ' + d);
+      saveBtn.onclick = () => {
+        plan[d] = area.value.split('\n').map(x => x.trim()).filter(Boolean);
+        save(LS.plan, plan);
+        toast('Saved Day ' + d);
+        renderToday();
+      };
+      c.appendChild(saveBtn);
+      host.appendChild(c);
+    }
+  }
+
+  // Persist draft inputs for today
+  function saveDraft() {
+    const draft = currentRows();
+    sessionStorage.setItem('todayDraft', JSON.stringify(draft));
+  }
+
+  function loadDraft() {
+    try {
+      const d = JSON.parse(sessionStorage.getItem('todayDraft')) || [];
+      d.forEach(dr => {
+        const card = [...document.querySelectorAll('.task-card')].find(c => c._refs.subject === dr.Subject);
+        if (card) {
+          card._refs.hours.value = dr.Hours || 0;
+          card._refs.done.checked = !!dr.Completed;
+          card._refs.mode.value = dr.Mode || 'Deep Work';
+          card._refs.priority.value = dr.Priority || 'Medium';
+          card._refs.notes.innerHTML = dr.Notes || 'Notes…';
+        }
+      });
+      updateKPIs();
+    } catch (e) {
+      console.error('Load draft failed:', e);
+    }
+  }
+
+  // Notifications
+  function notify(msg) {
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') {
+        new Notification(msg);
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') new Notification(msg);
+        });
+      }
+    }
+  }
+
+  // Export / Import
+  function exportCSV() {
+    let csv = 'Date,Subject,Completed,Hours,Notes,Priority,Mode,Pomodoros,XP\n';
+    logs.forEach(r => {
+      csv += `${r.Date},"${r.Subject}",${r.Completed},${r.Hours},"${(r.Notes || '').replaceAll('"', '\'')}",${r.Priority},${r.Mode},${r.Pomodoros || 0},${r.XP || 0}\n`;
+    });
+    download(csv, 'study_log.csv', 'text/csv');
+  }
+
+  function exportJSON() {
+    const payload = { settings, plan, logs, syllabusProgress };
+    download(JSON.stringify(payload, null, 2), 'gateda_backup.json', 'application/json');
+  }
+
+  function download(content, filename, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importJSON() {
+    const i = document.createElement('input');
+    i.type = 'file';
+    i.accept = '.json';
+    i.onchange = () => {
+      const f = i.files[0];
+      const r = new FileReader();
+      r.onload = () => {
+        try {
+          const data = JSON.parse(r.result);
+          settings = Object.assign(settings, data.settings || {});
+          plan = data.plan || plan;
+          logs = data.logs || logs;
+          syllabusProgress = data.syllabusProgress || syllabusProgress;
+          save(LS.settings, settings);
+          save(LS.plan, plan);
+          save(LS.logs, logs);
+          save(LS.syllabusProgress, syllabusProgress);
+          toast('Imported successfully');
+          renderToday();
+          renderLogTable();
+          renderSyllabus();
+        } catch (e) {
+          toast('Import failed: ' + e.message);
+        }
+      };
+      r.readAsText(f);
+    };
+    i.click();
+  }
+
+  // Buttons
+  document.getElementById('saveBtn').onclick = saveLog;
+  document.getElementById('refreshToday').onclick = () => { renderToday(); };
+  document.getElementById('clearToday').onclick = () => { sessionStorage.removeItem('todayDraft'); renderToday(); };
+  document.getElementById('nextDayBtn').onclick = () => {
+    const s = new Date(settings.startDate);
+    s.setDate(s.getDate() - 1);
+    settings.startDate = s.toISOString().slice(0, 10);
+    save(LS.settings, settings);
+    renderToday();
+    toast('Moved to next day in cycle');
+  };
+
+  document.getElementById('exportCsv').onclick = exportCSV;
+  document.getElementById('exportJson').onclick = exportJSON;
+  document.getElementById('importJson').onclick = importJSON;
+  document.getElementById('clearLogs').onclick = () => {
+    if (confirm('Clear ALL logs?')) {
+      logs = [];
+      save(LS.logs, logs);
+      renderLogTable();
+      drawCharts();
+      toast('Logs cleared');
+    }
+  };
+
+  document.getElementById('saveSettings').onclick = () => {
+    const dailyGoal = parseFloat(document.getElementById('dailyGoal').value) || settings.dailyGoal;
+    const pomoWork = parseInt(document.getElementById('pomoWork').value) || settings.pomoWork;
+    const pomoBreak = parseInt(document.getElementById('pomoBreak').value) || settings.pomoBreak;
+    if (dailyGoal < 0 || pomoWork < 1 || pomoBreak < 1) {
+      toast('Invalid settings values');
+      return;
+    }
+    settings.dailyGoal = dailyGoal;
+    settings.pomoWork = pomoWork;
+    settings.pomoBreak = pomoBreak;
+    save(LS.settings, settings);
+    document.getElementById('kGoal').textContent = settings.dailyGoal + 'h';
+    toast('Settings saved');
+  };
+  document.getElementById('resetPlan').onclick = () => {
+    if (confirm('Reset plan to defaults?')) {
+      plan = JSON.parse(JSON.stringify(DEFAULT_PLAN));
+      save(LS.plan, plan);
+      renderPlanEditor();
+      renderToday();
+      toast('Plan reset');
+    }
+  };
+
+  // Keyboard shortcut Ctrl+S
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      saveLog();
+    }
+  });
+
+  // Initial render
+  renderToday();
+  renderSyllabus();
+  renderPlanEditor();
+  renderLogTable();
+  drawCharts();
+  </script>
+</body>
+</html>
