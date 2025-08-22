@@ -1,36 +1,21 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GATE DA 2026 — Study Tracker (Local JSON + LocalStorage)</title>
+  <title>StudyTracker — GATE DA 2026 (No-Backend)</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #0f1226;
-      --card: #171a34;
-      --soft: #1f2350;
-      --text: #e8ebff;
-      --muted: #b6baf0;
-      --acc: #7c3aed;
-      --acc2: #10b981;
-      --warn: #f59e0b;
-      --danger: #ef4444;
-      --ring: rgba(124, 58, 237, .35);
+      --bg: #0f1226; --card: #171a34; --soft: #1f2350; --text: #e8ebff; --muted: #b6baf0;
+      --acc: #7c3aed; --acc2: #10b981; --warn: #f59e0b; --danger: #ef4444; --ring: rgba(124, 58, 237, .35);
     }
     [data-theme="light"] {
-      --bg: #f6f7ff;
-      --card: #ffffff;
-      --soft: #eef0ff;
-      --text: #161a42;
-      --muted: #4b4f7a;
-      --acc: #6d28d9;
-      --acc2: #059669;
-      --warn: #b45309;
-      --danger: #b91c1c;
-      --ring: rgba(109, 40, 217, .25);
+      --bg: #f6f7ff; --card: #ffffff; --soft: #eef0ff; --text: #161a42; --muted: #4b4f7a;
+      --acc: #6d28d9; --acc2: #059669; --warn: #b45309; --danger: #b91c1c; --ring: rgba(109, 40, 217, .25);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -78,23 +63,28 @@
     label { font-size: 12px; color: var(--muted); }
     .progress { height: 10px; background: #0b0e2b; border-radius: 999px; border: 1px solid #2a2e60; overflow: hidden; }
     .progress > div { height: 100%; background: linear-gradient(90deg, #10b981, #06b6d4); transition: width 0.3s ease; }
-    .loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, .7); display: flex; align-items: center; justify-content: center; color: var(--text); font-size: 18px; z-index: 1000; }
+    .toast { position: fixed; right: 16px; bottom: 16px; background: #10143a; border: 1px solid #2a2e60; color: var(--text); padding: 12px 14px; border-radius: 14px; opacity: 0; transform: translateY(10px); transition: opacity .25s, transform .25s; }
+    .loading { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; color: var(--text); font-size: 18px; z-index: 1000; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-content { background: var(--card); border-radius: 18px; padding: 20px; width: 100%; max-width: 400px; }
+    .modal-content h2 { margin: 0 0 16px; font-size: 20px; }
+    .modal-content input { width: 100%; margin-bottom: 12px; }
   </style>
 </head>
 <body>
   <div class="loading" id="loading">Loading...</div>
 
-  <div class="modal" id="loginModal" style="display:none">
-    <div class="modal-content" style="background:var(--card);border-radius:18px;padding:20px;width:100%;max-width:400px;">
-      <h2>Login to Study Tracker (Local)</h2>
+  <div class="modal" id="loginModal">
+    <div class="modal-content">
+      <h2>Login to StudyTracker (Local)</h2>
       <input type="email" id="email" placeholder="Email" aria-label="Email" />
       <input type="password" id="password" placeholder="Password" aria-label="Password" />
       <button class="btn primary" id="loginBtn">Login</button>
       <button class="btn" id="signupBtn">Sign Up</button>
-      <div class="error" id="authError" style="color:var(--danger);font-size:12px;margin-top:8px;"></div>
       <div class="small" style="margin-top:8px;color:#b6baf0">
-        No server. Data is stored in this browser (localStorage). Use “Save/Load data.json” to back up or move to another device.
+        No server writes. Data is stored in this browser (localStorage). Use “Save/Load data.json” to back up or move devices.
       </div>
+      <div class="error" id="authError" style="color:var(--danger);font-size:12px;margin-top:8px;"></div>
     </div>
   </div>
 
@@ -102,27 +92,27 @@
     <header>
       <div class="title">
         <div class="pill">GATE DA 2026</div>
-        <h1>Study Tracker · Data Science & AI</h1>
+        <h1>StudyTracker · Data Science & AI</h1>
       </div>
       <div class="row right">
         <span class="chip" id="userChip"></span>
-        <button class="btn" id="logoutBtn" aria-label="Logout">🚪 Logout</button>
-        <button class="btn" id="themeToggle" aria-label="Toggle theme">🌗 Theme</button>
-        <button class="btn" id="focusToggle" aria-label="Toggle focus mode">🎯 Focus</button>
+        <button class="btn" id="logoutBtn">🚪 Logout</button>
+        <button class="btn" id="themeToggle">🌗 Theme</button>
+        <button class="btn" id="focusToggle">🎯 Focus</button>
         <span class="chip" id="todayChip">📅</span>
       </div>
     </header>
 
     <nav class="row mb8" role="tablist">
-      <button class="tab active" data-tab="today" role="tab" aria-selected="true">Today</button>
-      <button class="tab" data-tab="syllabus" role="tab">Syllabus</button>
-      <button class="tab" data-tab="log" role="tab">Log</button>
-      <button class="tab" data-tab="dashboard" role="tab">Dashboard</button>
-      <button class="tab" data-tab="settings" role="tab">Settings</button>
+      <button class="tab active" data-tab="today" aria-selected="true">Today</button>
+      <button class="tab" data-tab="syllabus">Syllabus</button>
+      <button class="tab" data-tab="log">Log</button>
+      <button class="tab" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="settings">Settings</button>
     </nav>
 
     <div class="grid cols-3">
-      <section id="today" class="card" style="grid-column: 1 / span 2;" role="tabpanel">
+      <section id="today" class="card" style="grid-column: 1 / span 2;">
         <h2>Today's Plan <span class="sub" id="cycleText"></span></h2>
         <div class="kpi">
           <div class="k"><div class="small">Goal</div><div class="v" id="kGoal">6h</div></div>
@@ -133,75 +123,60 @@
         </div>
         <div class="sep"></div>
         <div class="toolbar mt8">
-          <button class="btn primary" id="saveBtn" aria-label="Save log">💾 Save Log (Ctrl+S)</button>
-          <button class="btn green" id="nextDayBtn" aria-label="Next day">➡ Next Day</button>
-          <button class="btn" id="refreshToday" aria-label="Refresh tasks">🔄 Refresh</button>
-          <button class="btn" id="clearToday" aria-label="Clear inputs">🧹 Clear Inputs</button>
+          <button class="btn primary" id="saveBtn">💾 Save Log (Ctrl+S)</button>
+          <button class="btn green" id="nextDayBtn">➡ Next Day</button>
+          <button class="btn" id="refreshToday">🔄 Refresh</button>
+          <button class="btn" id="clearToday">🧹 Clear Inputs</button>
         </div>
-        <div class="tasks mt12" id="taskList" role="list"></div>
+        <div class="tasks mt12" id="taskList"></div>
       </section>
 
-      <section id="syllabus" class="card" style="display:none" role="tabpanel">
+      <section id="syllabus" class="card" style="display:none">
         <h2>DA Syllabus Map</h2>
         <div class="syllabus" id="syllabusBox"></div>
       </section>
 
-      <section id="log" class="card" style="grid-column:1 / span 2; display:none" role="tabpanel">
+      <section id="log" class="card" style="grid-column:1 / span 2; display:none">
         <h2>Logs</h2>
         <div class="toolbar">
-          <button class="btn" id="exportCsv" aria-label="Export logs as CSV">⬇ Export CSV</button>
-          <button class="btn" id="loadJson" aria-label="Load from data.json">⬆ Load data.json</button>
-          <button class="btn" id="saveJson" aria-label="Save to data.json">💾 Save data.json</button>
-          <button class="btn red" id="clearLogs" aria-label="Clear all logs">🗑 Clear All Logs</button>
+          <button class="btn" id="exportCsv">⬇ Export CSV</button>
+          <button class="btn" id="loadJson">⬆ Load data.json</button>
+          <button class="btn" id="saveJson">💾 Save data.json</button>
+          <button class="btn red" id="clearLogs">🗑 Clear All Logs</button>
         </div>
-        <table class="table mt12" role="grid">
+        <table class="table mt12">
           <thead><tr><th>Date</th><th>Subject</th><th>Hours</th><th>Done</th><th>Priority</th><th>Mode</th><th>Pomodoros</th><th>Notes</th></tr></thead>
           <tbody id="logTable"></tbody>
         </table>
       </section>
 
-      <section id="dashboard" class="card" style="display:none" role="tabpanel">
+      <section id="dashboard" class="card" style="display:none">
         <h2>Dashboard</h2>
         <div class="grid cols-2">
-          <div class="card">
-            <h3>Daily Hours</h3>
-            <canvas id="dailyChart" height="160"></canvas>
-          </div>
-          <div class="card">
-            <h3>Hours by Subject</h3>
-            <canvas id="subjectChart" height="160"></canvas>
-          </div>
-          <div class="card">
-            <h3>Completion Share</h3>
-            <canvas id="completionChart" height="160"></canvas>
-          </div>
-          <div class="card">
-            <h3>Progress by Category</h3>
-            <canvas id="categoryChart" height="160"></canvas>
-          </div>
-          <div class="card">
-            <h3>Last 7 Days</h3>
-            <canvas id="last7Chart" height="160"></canvas>
-          </div>
+          <div class="card"><h3>Daily Hours</h3><canvas id="dailyChart" height="160"></canvas></div>
+          <div class="card"><h3>Hours by Subject</h3><canvas id="subjectChart" height="160"></canvas></div>
+          <div class="card"><h3>Completion Share</h3><canvas id="completionChart" height="160"></canvas></div>
+          <div class="card"><h3>Progress by Category</h3><canvas id="categoryChart" height="160"></canvas></div>
+          <div class="card"><h3>Last 7 Days</h3><canvas id="last7Chart" height="160"></canvas></div>
         </div>
       </section>
 
-      <section id="settings" class="card" style="display:none" role="tabpanel">
+      <section id="settings" class="card" style="display:none">
         <h2>Settings</h2>
         <div class="grid cols-2">
           <div class="card">
             <h3>General</h3>
             <div class="row mt8">
               <label for="dailyGoal">Daily Goal (hrs)</label>
-              <input type="number" id="dailyGoal" min="0" step="0.5" value="6" aria-label="Daily goal hours" />
+              <input type="number" id="dailyGoal" min="0" step="0.5" value="6" />
               <label for="pomoWork">Pomodoro Work/Break (min)</label>
-              <input type="number" id="pomoWork" min="1" value="25" aria-label="Pomodoro work minutes" /> /
-              <input type="number" id="pomoBreak" min="1" value="5" aria-label="Pomodoro break minutes" /> min
+              <input type="number" id="pomoWork" min="1" value="25" /> /
+              <input type="number" id="pomoBreak" min="1" value="5" /> min
             </div>
             <div class="row mt8">
-              <button class="btn green" id="saveSettings" aria-label="Save settings">Save</button>
-              <button class="btn" id="exportJson" aria-label="Export configuration and plan">Export Config+Plan</button>
-              <button class="btn" id="resetPlan" aria-label="Reset 8-day plan">Reset 8-Day Plan</button>
+              <button class="btn green" id="saveSettings">Save</button>
+              <button class="btn" id="exportJson">Export Config+Plan</button>
+              <button class="btn" id="resetPlan">Reset 8-Day Plan</button>
             </div>
           </div>
           <div class="card">
@@ -213,12 +188,10 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" role="alert" style="position:fixed;right:16px;bottom:16px;background:#10143a;border:1px solid #2a2e60;color:var(--text);padding:12px 14px;border-radius:14px;opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s;">Saved</div>
+  <div class="toast" id="toast">Saved</div>
 
   <script>
-    // -----------------------
-    // Data & Defaults
-    // -----------------------
+    // ---------- Data & Defaults ----------
     const SYLLABUS = {
       "Probability & Statistics": [
         "Counting (perm/comb)", "Axioms, sample space, events",
@@ -284,16 +257,7 @@
       8: ["Aptitude/Revision/PYQs", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Light Revision"]
     };
 
-    // -----------------------
-    // Local Auth + Storage
-    // -----------------------
-    // Structure in localStorage:
-    // GATEDA_LOCAL_STATE = {
-    //  accounts: {
-    //    [email]: { passHash, data: { settings, plan, logs, syllabusProgress, taskOrder } }
-    //  },
-    //  activeEmail
-    // }
+    // ---------- Local Auth + Storage ----------
     const LS_KEY = "GATEDA_LOCAL_STATE";
 
     function defaultData() {
@@ -312,24 +276,15 @@
         const raw = localStorage.getItem(LS_KEY);
         if (!raw) return { accounts:{}, activeEmail:null };
         const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object") return { accounts:{}, activeEmail:null };
-        parsed.accounts = parsed.accounts || {};
-        parsed.activeEmail = parsed.activeEmail || null;
-        return parsed;
-      } catch {
-        return { accounts:{}, activeEmail:null };
-      }
+        return { accounts: parsed.accounts||{}, activeEmail: parsed.activeEmail||null };
+      } catch { return { accounts:{}, activeEmail:null }; }
     }
-
-    function saveLocalState(state) {
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
-    }
+    function saveLocalState(s) { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} }
 
     async function sha256(str) {
       const enc = new TextEncoder().encode(str);
       const buf = await crypto.subtle.digest("SHA-256", enc);
-      const bytes = Array.from(new Uint8Array(buf));
-      return bytes.map(b => b.toString(16).padStart(2,"0")).join("");
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
     }
 
     let state = loadLocalState();
@@ -344,20 +299,15 @@
       syllabusProgress = activeUser.data.syllabusProgress;
       taskOrder = activeUser.data.taskOrder;
     }
-
+    function ensureAccount(email) {
+      if (!state.accounts[email]) state.accounts[email] = { passHash:"", data: defaultData() };
+    }
     function setActiveUser(email) {
-      state.activeEmail = email;
       activeUser = state.accounts[email] ? { email, ...state.accounts[email] } : null;
+      state.activeEmail = email;
       bindActiveDataRefs();
       saveLocalState(state);
     }
-
-    function ensureAccount(email) {
-      if (!state.accounts[email]) {
-        state.accounts[email] = { passHash:"", data: defaultData() };
-      }
-    }
-
     function persistActive() {
       if (activeUser) {
         state.accounts[activeUser.email] = { passHash: activeUser.passHash, data: activeUser.data };
@@ -365,9 +315,7 @@
       }
     }
 
-    // -----------------------
-    // UI & App
-    // -----------------------
+    // ---------- UI helpers ----------
     const appEl = document.getElementById("app");
     const loginModal = document.getElementById("loginModal");
     const loadingEl = document.getElementById("loading");
@@ -375,67 +323,65 @@
     const userChip = document.getElementById("userChip");
     const todayChip = document.getElementById("todayChip");
     const taskList = document.getElementById("taskList");
-    const timers = new Map();
+    const toastEl = document.getElementById("toast");
     let focus = false;
     let charts = [];
+    const timers = new Map();
 
     function toast(msg) {
-      const t = document.getElementById("toast");
-      t.textContent = msg;
-      t.style.opacity = "1";
-      t.style.transform = "translateY(0)";
-      setTimeout(() => { t.style.opacity = "0"; t.style.transform = "translateY(10px)"; }, 1800);
+      toastEl.textContent = msg;
+      toastEl.style.opacity = "1";
+      toastEl.style.transform = "translateY(0)";
+      setTimeout(()=>{ toastEl.style.opacity="0"; toastEl.style.transform="translateY(10px)"; }, 1800);
     }
-
-    function fmt(n) { return (Math.round((Number(n)||0)*100)/100).toFixed(2); }
-    function sum(a) { return a.reduce((x,y)=>x+y,0); }
-    function fmtTime(ms) {
-      let s = Math.floor(ms/1000); const h = Math.floor(s/3600); s -= h*3600; const m = Math.floor(s/60); s -= m*60;
-      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-    }
-    function cycleDay() { const s=new Date(settings.startDate), d=new Date(); const diff=Math.floor((d-s)/(1000*60*60*24)); return (diff%8)+1; }
-    function groupBy(arr, key){ return arr.reduce((acc,it)=>{ acc[it[key]]=acc[it[key]]||[]; acc[it[key]].push(it); return acc; },{}); }
     function showLogin(){ loginModal.style.display="flex"; appEl.classList.remove("active"); loadingEl.style.display="none"; }
     function showApp(){ loginModal.style.display="none"; appEl.classList.add("active"); loadingEl.style.display="none"; }
-    function notify(msg){ if(!("Notification" in window)) return; if(Notification.permission==="granted"){ try{ new Notification(msg);}catch{} } }
+
+    function fmt(n){ return (Math.round((Number(n)||0)*100)/100).toFixed(2); }
+    function sum(a){ return a.reduce((x,y)=>x+y,0); }
+    function fmtTime(ms){ let s=Math.floor(ms/1000); const h=Math.floor(s/3600); s-=h*3600; const m=Math.floor(s/60); s-=m*60; return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; }
+    function cycleDay(){ const s=new Date(settings.startDate), d=new Date(); const diff=Math.floor((d-s)/(1000*60*60*24)); return (diff%8)+1; }
+    function groupBy(arr, key){ return arr.reduce((acc,it)=>{ (acc[it[key]] ||= []).push(it); return acc; },{}); }
+    function notify(msg){ if(!("Notification" in window)) return; if(Notification.permission==="granted"){ try{ new Notification(msg); }catch{} } }
+
     function subjectsForToday(){ const d=cycleDay(); const order = taskOrder[`day${d}`] || plan[d] || []; return order.length?order:(plan[d]||[]); }
-    function clearCharts(){ charts.forEach(c=>{try{c.destroy();}catch{}}); charts=[]; }
+    function clearCharts(){ charts.forEach(c=>{ try{ c.destroy(); }catch{} }); charts = []; }
 
     function attachCardDragHandlers(card){
-      card.addEventListener("dragstart",()=>{ card.classList.add("dragging"); });
+      card.addEventListener("dragstart",()=>card.classList.add("dragging"));
       card.addEventListener("dragend",()=>{
         card.classList.remove("dragging");
-        const order = [...taskList.querySelectorAll(".task-card")].map(c=>c._refs.subject);
-        taskOrder[`day${cycleDay()}`] = order;
-        persistActive();
-        toast("Task order saved");
+        const order=[...taskList.querySelectorAll(".task-card")].map(c=>c._refs.subject);
+        taskOrder[`day${cycleDay()}`]=order; persistActive(); toast("Task order saved");
       });
     }
     function getDragAfterElement(container, y){
       const els=[...container.querySelectorAll(".task-card:not(.dragging)")];
       return els.reduce((closest,child)=>{
         const box=child.getBoundingClientRect(); const offset=y - box.top - box.height/2;
-        if(offset<0 && offset>closest.offset){ return {offset, element: child}; }
+        if(offset<0 && offset>closest.offset) return {offset, element: child};
         return closest;
       }, {offset:Number.NEGATIVE_INFINITY, element:null}).element;
     }
     function enableDragAndDrop(){
-      taskList.addEventListener("dragover",e=>{
+      taskList.addEventListener("dragover", e=>{
         e.preventDefault();
-        const dragging=document.querySelector(".task-card.dragging"); if(!dragging) return;
+        const dragging=document.querySelector(".task-card.dragging");
+        if(!dragging) return;
         const after=getDragAfterElement(taskList, e.clientY);
         if(after==null) taskList.appendChild(dragging); else taskList.insertBefore(dragging, after);
-      }, { once:true });
+      }, { once: true });
     }
 
     function xpFrom(hours, completed, priority){
-      const base=Math.round((Number(hours)||0)*10); const bonus=completed?10:0; const pr={Low:0,Medium:5,High:10}[priority]||0; return base+bonus+pr;
+      const base=Math.round((Number(hours)||0)*10), bonus=completed?10:0, pr={Low:0,Medium:5,High:10}[priority]||0; return base+bonus+pr;
     }
     function streakDays(){
-      const goal=settings.dailyGoal; const byDate={}; (logs||[]).forEach(r=>{ byDate[r.Date]=(byDate[r.Date]||0)+(r.Hours||0); });
-      let cur=new Date(), streak=0;
-      for(let i=0;i<365;i++){ const iso=cur.toISOString().slice(0,10); if((byDate[iso]||0)>=goal){ streak++; cur.setDate(cur.getDate()-1);} else break; }
-      return streak;
+      const goal=settings.dailyGoal; const byDate={};
+      (logs||[]).forEach(r=>byDate[r.Date]=(byDate[r.Date]||0)+(r.Hours||0));
+      let cur=new Date(), n=0;
+      for(let i=0;i<365;i++){ const iso=cur.toISOString().slice(0,10); if((byDate[iso]||0)>=goal){ n++; cur.setDate(cur.getDate()-1);} else break; }
+      return n;
     }
     function updateKPIs(){
       const cards=[...document.querySelectorAll(".task-card")];
@@ -443,34 +389,30 @@
       const done=cards.filter(c=>c._refs.done.checked).length;
       document.getElementById("kToday").textContent=fmt(total)+"h";
       document.getElementById("kDone").textContent=String(done);
-      const pct=Math.min(100, (total/(settings.dailyGoal||1))*100); document.getElementById("goalBar").style.width=pct+"%";
+      const pct=Math.min(100, (total/(settings.dailyGoal||1))*100);
+      document.getElementById("goalBar").style.width=pct+"%";
       document.getElementById("kStreak").textContent=String(streakDays());
       const grouped=groupBy(logs,"Date");
       const avgHours=logs.length?fmt(logs.reduce((a,b)=>a+(b.Hours||0),0)/Object.keys(grouped).length):"0.00";
       document.getElementById("kAvgHours").textContent=avgHours+"h";
     }
     function currentRows(){
-      const rows=[]; const date=new Date().toISOString().slice(0,10);
+      const rows=[], date=new Date().toISOString().slice(0,10);
       document.querySelectorAll(".task-card").forEach(c=>{
-        const r=c._refs; const hours=parseFloat(r.hours.value||0); const notesText=r.notes.textContent.trim();
+        const r=c._refs, hours=parseFloat(r.hours.value||0), notesText=r.notes.textContent.trim();
         if(hours>0 || r.done.checked || notesText!=="Notes…"){
-          rows.push({
-            Date:date, Subject:r.subject, Completed:r.done.checked, Hours:hours,
-            Notes: notesText==="Notes…"?"":notesText, Priority:r.priority.value, Mode:r.mode.value,
-            Pomodoros:r.state?.pomos||0, XP: xpFrom(hours, r.done.checked, r.priority.value)
-          });
+          rows.push({ Date:date, Subject:r.subject, Completed:r.done.checked, Hours:hours, Notes:notesText==="Notes…"?"":notesText, Priority:r.priority.value, Mode:r.mode.value, Pomodoros:r.state?.pomos||0, XP: xpFrom(hours, r.done.checked, r.priority.value) });
         }
       });
       return rows;
     }
 
     function renderLogTable(){
-      const tb=document.getElementById("logTable"); if(!tb) return;
-      tb.innerHTML="";
+      const tb=document.getElementById("logTable"); if(!tb) return; tb.innerHTML="";
       (logs||[]).forEach(r=>{
         const tr=document.createElement("tr");
         const safe=(r.Notes||"").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-        tr.innerHTML=`<td>${r.Date}</td><td>${r.Subject}</td><td>${fmt(r.Hours||0)}</td><td>${r.Completed?"✅":"—"}</td><td>${r.Priority||""}</td><td>${r.Mode||""}</td><td>${r.Pomodoros||0}</td><td>${safe}</td>`;
+        tr.innerHTML=`<td>${r.Date}</td><td>${r.Subject}</td><td>${fmt(r.Hours||0)}</td><td>${r.Completed?'✅':'—'}</td><td>${r.Priority||''}</td><td>${r.Mode||''}</td><td>${r.Pomodoros||0}</td><td>${safe}</td>`;
         tb.appendChild(tr);
       });
     }
@@ -483,8 +425,8 @@
             category=document.getElementById("categoryChart"),
             last7=document.getElementById("last7Chart");
       if(!daily||!subject||!completion||!category||!last7) return;
-
       clearCharts();
+
       const byDate={}, bySubject={}, byCategory={}; let comp=0;
       (logs||[]).forEach(r=>{
         byDate[r.Date]=(byDate[r.Date]||0)+(r.Hours||0);
@@ -493,76 +435,59 @@
         byCategory[cat]=(byCategory[cat]||0)+(r.Hours||0);
         if(r.Completed) comp++;
       });
-      const dates=Object.keys(byDate).sort(); const hours=dates.map(d=>byDate[d]);
-      const textColor=getComputedStyle(document.body).getPropertyValue("--text") || "#e8ebff";
-      const chartOptions={ plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:textColor.trim()}}, y:{beginAtZero:true,ticks:{color:textColor.trim()}} } };
+      const dates=Object.keys(byDate).sort(), hours=dates.map(d=>byDate[d]);
+      const textColor=getComputedStyle(document.body).getPropertyValue("--text")||"#e8ebff";
+      const opts={ plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:textColor.trim()}}, y:{beginAtZero:true,ticks:{color:textColor.trim()}} } };
 
-      charts.push(new Chart(daily,{ type:"line", data:{labels:dates, datasets:[{label:"Hours", data:hours, borderColor:"#10b981"}]}, options:chartOptions }));
-      charts.push(new Chart(subject,{ type:"bar", data:{labels:Object.keys(bySubject), datasets:[{label:"Hours", data:Object.values(bySubject), backgroundColor:"#7c3aed"}]}, options:chartOptions }));
+      charts.push(new Chart(daily, { type:"line", data:{ labels:dates, datasets:[{ label:"Hours", data:hours, borderColor:"#10b981" }] }, options:opts }));
+      charts.push(new Chart(subject, { type:"bar", data:{ labels:Object.keys(bySubject), datasets:[{label:"Hours", data:Object.values(bySubject), backgroundColor:"#7c3aed"}] }, options:opts }));
       const total=(logs||[]).length;
-      charts.push(new Chart(completion,{ type:"doughnut", data:{labels:["Completed","Pending"], datasets:[{data:[comp, Math.max(0,total-comp)], backgroundColor:["#10b981","#ef4444"]}]}, options:{} }));
-      charts.push(new Chart(category,{ type:"bar", data:{labels:Object.keys(byCategory), datasets:[{label:"Hours", data:Object.values(byCategory), backgroundColor:"#4f46e5"}]}, options:chartOptions }));
+      charts.push(new Chart(completion, { type:"doughnut", data:{ labels:["Completed","Pending"], datasets:[{ data:[comp, Math.max(0,total-comp)], backgroundColor:["#10b981","#ef4444"] }] } }));
+      charts.push(new Chart(category, { type:"bar", data:{ labels:Object.keys(byCategory), datasets:[{label:"Hours", data:Object.values(byCategory), backgroundColor:"#4f46e5"}] }, options:opts }));
 
       const last7Dates=[]; for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); last7Dates.push(d.toISOString().slice(0,10)); }
-      charts.push(new Chart(last7,{ type:"bar", data:{labels:last7Dates, datasets:[{label:"Hours", data:last7Dates.map(d=>byDate[d]||0), backgroundColor:"#10b981"}]}, options:chartOptions }));
+      charts.push(new Chart(last7, { type:"bar", data:{ labels:last7Dates, datasets:[{ label:"Hours", data:last7Dates.map(d=>byDate[d]||0), backgroundColor:"#10b981" }] }, options:opts }));
     }
 
     function makeTaskCard(subject){
       const card=document.createElement("div");
-      card.className="task-card"; card.draggable=true; card.setAttribute("role","listitem");
+      card.className="task-card"; card.draggable=true;
 
       const left=document.createElement("div");
       left.innerHTML=`<div class="task-title">${subject}</div><div class="small">Max 3h/day per subject</div>`;
 
       const controls=document.createElement("div"); controls.className="row";
-      const hours=document.createElement("input"); hours.type="number"; hours.min=0; hours.max=3; hours.step=0.25; hours.value="0"; hours.setAttribute("aria-label","Hours studied");
-      hours.addEventListener("input",()=>{ const v=parseFloat(hours.value||0); if(v<0) hours.value=0; if(v>3) hours.value=3; updateKPIs(); });
-
-      const mode=document.createElement("select");
-      ["Deep Work","Review","Practice","PYQs","Test"].forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; mode.appendChild(o); });
-      mode.setAttribute("aria-label","Study mode");
-
-      const priority=document.createElement("select");
-      ["Low","Medium","High"].forEach(p=>{ const o=document.createElement("option"); o.value=p; o.textContent=p; priority.appendChild(o); });
-      priority.setAttribute("aria-label","Priority");
-
-      const done=document.createElement("input"); done.type="checkbox"; done.setAttribute("aria-label","Task completed"); done.addEventListener("change",updateKPIs);
-
+      const hours=document.createElement("input"); Object.assign(hours,{type:"number",min:0,max:3,step:0.25,value:"0"}); hours.addEventListener("input",()=>{ let v=parseFloat(hours.value||0); if(v<0) hours.value=0; if(v>3) hours.value=3; updateKPIs(); });
+      const mode=document.createElement("select"); ["Deep Work","Review","Practice","PYQs","Test"].forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; mode.appendChild(o); });
+      const priority=document.createElement("select"); ["Low","Medium","High"].forEach(p=>{ const o=document.createElement("option"); o.value=p; o.textContent=p; priority.appendChild(o); });
+      const done=document.createElement("input"); done.type="checkbox"; done.addEventListener("change",updateKPIs);
       const badge=txt=>{ const s=document.createElement("span"); s.className="badge"; s.textContent=txt; return s; };
       controls.append(badge("Hours"),hours,badge("Mode"),mode,badge("Priority"),priority,badge("Done"),done);
 
       const timerBox=document.createElement("div"); timerBox.className="row";
       const tlabel=document.createElement("span"); tlabel.className="badge"; tlabel.textContent="00:00:00";
-      const btn=(txt)=>{ const b=document.createElement("button"); b.className="btn"; b.textContent=txt; b.setAttribute("aria-label",txt); return b; };
+      const btn=txt=>{ const b=document.createElement("button"); b.className="btn"; b.textContent=txt; return b; };
       const startBtn=btn("▶ Start"), pauseBtn=btn("⏸ Pause"), stopBtn=btn("■ Stop");
-      const pomoChk=document.createElement("input"); pomoChk.type="checkbox"; pomoChk.setAttribute("aria-label","Enable Pomodoro");
+      const pomoChk=document.createElement("input"); pomoChk.type="checkbox";
       const pomoLbl=document.createElement("span"); pomoLbl.className="badge"; pomoLbl.textContent="🍅 0";
-      timerBox.append(tlabel, startBtn, pauseBtn, stopBtn, badge("Pomodoro"), pomoChk, pomoLbl);
+      timerBox.append(tlabel,startBtn,pauseBtn,stopBtn,badge("Pomodoro"),pomoChk,pomoLbl);
 
-      const notes=document.createElement("div"); notes.className="task-note"; notes.contentEditable=true; notes.setAttribute("aria-label","Task notes");
-      notes.innerHTML="Notes…"; notes.addEventListener("focus",()=>{ if(notes.innerHTML==="Notes…") notes.innerHTML=""; });
+      const notes=document.createElement("div"); notes.className="task-note"; notes.contentEditable=true; notes.innerHTML="Notes…";
+      notes.addEventListener("focus",()=>{ if(notes.innerHTML==="Notes…") notes.innerHTML=""; });
       notes.addEventListener("blur",()=>{ if(!notes.innerHTML.trim()) notes.innerHTML="Notes…"; });
 
-      const state=timers.get(subject)||{ running:false, paused:false, start:0, elapsed:0, pomos:0 };
-      timers.set(subject,state);
-
+      const state=timers.get(subject)||{ running:false, paused:false, start:0, elapsed:0, pomos:0 }; timers.set(subject,state);
       function tick(){
         if(!state.running) return;
-        state.elapsed=Date.now()-state.start;
-        tlabel.textContent=fmtTime(state.elapsed);
-        if(pomoChk.checked){
-          const work=(settings.pomoWork||25)*60*1000, brk=(settings.pomoBreak||5)*60*1000, cyc=work+brk;
-          const e=Math.floor(state.elapsed/cyc);
-          if(e>state.pomos){ state.pomos=e; pomoLbl.textContent="🍅 "+state.pomos; notify(`Pomodoro complete for ${subject}`); }
-        }
+        state.elapsed=Date.now()-state.start; tlabel.textContent=fmtTime(state.elapsed);
+        if(pomoChk.checked){ const work=(settings.pomoWork||25)*60*1000, brk=(settings.pomoBreak||5)*60*1000, cyc=work+brk;
+          const e=Math.floor(state.elapsed/cyc); if(e>state.pomos){ state.pomos=e; pomoLbl.textContent="🍅 "+state.pomos; notify(`Pomodoro complete for ${subject}`); } }
         requestAnimationFrame(tick);
       }
-
       startBtn.addEventListener("click",()=>{ if(state.running||state.paused) return; state.running=true; state.start=Date.now()-state.elapsed; tick(); toast(`Timer started for ${subject}`); });
       pauseBtn.addEventListener("click",()=>{ if(!state.running||state.paused) return; state.paused=true; state.running=false; state.elapsed=Date.now()-state.start; toast(`Timer paused for ${subject}`); });
       stopBtn.addEventListener("click",()=>{ if(!state.running&&!state.paused) return; state.running=false; state.paused=false; state.elapsed=Date.now()-state.start;
-        const hrs=Math.min(3, Math.round((state.elapsed/3600000)*100)/100); hours.value=String(Math.max(parseFloat(hours.value||0), hrs));
-        updateKPIs(); saveDraft(); toast(`Timer stopped for ${subject}`); });
+        const hrs=Math.min(3, Math.round((state.elapsed/3600000)*100)/100); hours.value=String(Math.max(parseFloat(hours.value||0), hrs)); updateKPIs(); saveDraft(); toast(`Timer stopped for ${subject}`); });
 
       const rightA=document.createElement("div"); rightA.appendChild(controls);
       const rightB=document.createElement("div"); rightB.appendChild(timerBox);
@@ -580,20 +505,13 @@
       subjectsForToday().forEach(sub=>taskList.appendChild(makeTaskCard(sub)));
       updateKPIs(); enableDragAndDrop(); loadDraft();
     }
-
     function saveDraft(){ try{ sessionStorage.setItem("todayDraft", JSON.stringify(currentRows())); }catch{} }
     function loadDraft(){
       try{
         const d=JSON.parse(sessionStorage.getItem("todayDraft"))||[];
         d.forEach(dr=>{
           const card=[...document.querySelectorAll(".task-card")].find(c=>c._refs.subject===dr.Subject);
-          if(card && card._refs){
-            card._refs.hours.value=dr.Hours||0;
-            card._refs.done.checked=!!dr.Completed;
-            card._refs.mode.value=dr.Mode||"Deep Work";
-            card._refs.priority.value=dr.Priority||"Medium";
-            card._refs.notes.innerHTML=dr.Notes||"Notes…";
-          }
+          if(card&&card._refs){ card._refs.hours.value=dr.Hours||0; card._refs.done.checked=!!dr.Completed; card._refs.mode.value=dr.Mode||"Deep Work"; card._refs.priority.value=dr.Priority||"Medium"; card._refs.notes.innerHTML=dr.Notes||"Notes…"; }
         });
         updateKPIs();
       }catch{}
@@ -603,8 +521,7 @@
       const box=document.getElementById("syllabusBox"); box.innerHTML="";
       Object.entries(SYLLABUS).forEach(([cat,items])=>{
         const g=document.createElement("div"); g.className="group";
-        const h=document.createElement("h3");
-        const completed=items.filter(t=>syllabusProgress[`${cat}:${t}`]).length;
+        const h=document.createElement("h3"); const completed=items.filter(t=>syllabusProgress[`${cat}:${t}`]).length;
         h.innerHTML=`${cat} <span class="chip">${completed}/${items.length} completed</span>`; g.appendChild(h);
         items.forEach(t=>{
           const s=document.createElement("span"); s.className="topic";
@@ -637,8 +554,7 @@
       const badges=new Set(settings.badges||[]);
       [[10,"Rookie"],[50,"Committed"],[100,"Centurion"],[200,"Marathoner"]].forEach(([h,name])=>{ if(totalHours>=h) badges.add(name); });
       settings.badges=[...badges];
-      persistActive();
-      notify("Log saved!"); toast("Log saved"); renderLogTable(); updateKPIs();
+      persistActive(); notify("Log saved!"); toast("Log saved"); renderLogTable(); updateKPIs();
       try{ sessionStorage.removeItem("todayDraft"); }catch{}
     }
 
@@ -661,26 +577,22 @@
       renderToday(); renderSyllabus(); renderPlanEditor(); renderLogTable(); drawCharts(); showApp();
     }
 
-    // -----------------------
-    // Boot & Events
-    // -----------------------
+    // ---------- Boot ----------
     document.addEventListener("DOMContentLoaded", ()=>{
       if("Notification" in window && Notification.permission==="default"){ Notification.requestPermission().catch(()=>{}); }
-
-      const emailEl=document.getElementById("email");
-      const passEl=document.getElementById("password");
+      const emailEl=document.getElementById("email"), passEl=document.getElementById("password");
 
       function openAppIfSession(){
         if(state.activeEmail && state.accounts[state.activeEmail]){
-          activeUser={ email: state.activeEmail, ...state.accounts[state.activeEmail] };
+          activeUser={ email:state.activeEmail, ...state.accounts[state.activeEmail] };
           bindActiveDataRefs(); showSignedInUI();
-        } else { showLogin(); }
+        } else showLogin();
       }
       openAppIfSession();
 
+      // Auth
       document.getElementById("loginBtn").addEventListener("click", async ()=>{
-        const email=(emailEl.value||"").trim().toLowerCase();
-        const password=passEl.value||"";
+        const email=(emailEl.value||"").trim().toLowerCase(), password=passEl.value||"";
         if(!email||!password){ authError.textContent="Please enter email and password"; toast("Please enter email and password"); return; }
         if(!state.accounts[email]){ authError.textContent="Account not found. Please sign up."; toast("Account not found. Please sign up."); return; }
         const hash=await sha256(password);
@@ -689,15 +601,11 @@
       });
 
       document.getElementById("signupBtn").addEventListener("click", async ()=>{
-        const email=(emailEl.value||"").trim().toLowerCase();
-        const password=passEl.value||"";
+        const email=(emailEl.value||"").trim().toLowerCase(), password=passEl.value||"";
         if(!email||!password){ authError.textContent="Please enter email and password"; toast("Please enter email and password"); return; }
         if(state.accounts[email]){ authError.textContent="Account already exists. Please log in."; toast("Account already exists. Please log in."); return; }
         const hash=await sha256(password);
-        ensureAccount(email);
-        state.accounts[email].passHash=hash;
-        state.accounts[email].data=defaultData();
-        saveLocalState(state);
+        ensureAccount(email); state.accounts[email].passHash=hash; state.accounts[email].data=defaultData(); saveLocalState(state);
         activeUser={ email, ...state.accounts[email] }; setActiveUser(email); showSignedInUI(); toast("Signed up");
       });
 
@@ -711,46 +619,28 @@
           document.querySelectorAll(".tab").forEach(b=>{ b.classList.remove("active"); b.setAttribute("aria-selected","false"); });
           btn.classList.add("active"); btn.setAttribute("aria-selected","true");
           const id=btn.dataset.tab;
-          ["today","syllabus","log","dashboard","settings"].forEach(x=>{ document.getElementById(x).style.display=(x===id)?"block":"none"; });
+          ["today","syllabus","log","dashboard","settings"].forEach(x=>{ document.getElementById(x).style.display = (x===id) ? "block" : "none"; });
           drawIfTab(id);
         });
       });
 
-      // Theme toggle
-      document.getElementById("themeToggle").addEventListener("click", ()=>{
-        settings.theme = (settings.theme==="dark") ? "light" : "dark";
-        appEl.dataset.theme=settings.theme; persistActive(); toast("Theme switched");
-      });
+      // Theme/Focus
+      document.getElementById("themeToggle").addEventListener("click", ()=>{ settings.theme=settings.theme==="dark"?"light":"dark"; appEl.dataset.theme=settings.theme; persistActive(); toast("Theme switched"); });
+      document.getElementById("focusToggle").addEventListener("click", ()=>{ focus=!focus; document.body.style.filter=focus?"saturate(1.05)":"none"; document.querySelector("nav").style.display=focus?"none":"flex"; toast(focus?"Focus ON — distractions hidden":"Focus OFF"); });
 
-      // Focus toggle
-      document.getElementById("focusToggle").addEventListener("click", ()=>{
-        focus=!focus; document.body.style.filter=focus?"saturate(1.05)":"none";
-        document.querySelector("nav").style.display=focus?"none":"flex";
-        toast(focus?"Focus ON — distractions hidden":"Focus OFF");
-      });
-
-      // Today controls
+      // Today actions
       document.getElementById("saveBtn").addEventListener("click", saveLog);
-      document.getElementById("refreshToday").addEventListener("click", ()=>renderToday());
+      document.getElementById("refreshToday").addEventListener("click", renderToday);
       document.getElementById("clearToday").addEventListener("click", ()=>{ try{ sessionStorage.removeItem("todayDraft"); }catch{} renderToday(); });
-      document.getElementById("nextDayBtn").addEventListener("click", ()=>{
-        const s=new Date(settings.startDate); s.setDate(s.getDate()-1);
-        settings.startDate=s.toISOString().slice(0,10); persistActive(); renderToday(); toast("Moved to next day in cycle");
-      });
+      document.getElementById("nextDayBtn").addEventListener("click", ()=>{ const s=new Date(settings.startDate); s.setDate(s.getDate()-1); settings.startDate=s.toISOString().slice(0,10); persistActive(); renderToday(); toast("Moved to next day in cycle"); });
 
-      // Logs: CSV
+      // Logs import/export
       document.getElementById("exportCsv").addEventListener("click", ()=>{
         let csv="Date,Subject,Completed,Hours,Notes,Priority,Mode,Pomodoros,XP\n";
-        (logs||[]).forEach(r=>{
-          const notes=String(r.Notes||"").replaceAll('"',"'");
-          csv+=`${r.Date},"${r.Subject}",${r.Completed},${r.Hours},"${notes}",${r.Priority},${r.Mode},${r.Pomodoros||0},${r.XP||0}\n`;
-        });
-        const a=document.createElement("a");
-        a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-        a.download="study_log.csv"; a.click(); URL.revokeObjectURL(a.href);
+        (logs||[]).forEach(r=>{ const notes=String(r.Notes||"").replaceAll('"',"'"); csv+=`${r.Date},"${r.Subject}",${r.Completed},${r.Hours},"${notes}",${r.Priority},${r.Mode},${r.Pomodoros||0},${r.XP||0}\n`; });
+        const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="study_log.csv"; a.click(); URL.revokeObjectURL(a.href);
       });
 
-      // Save current active account data to data.json
       document.getElementById("saveJson").addEventListener("click", ()=>{
         if(!activeUser){ toast("Please sign in first"); return; }
         const payload={ email: activeUser.email, data: activeUser.data };
@@ -759,7 +649,6 @@
         a.download="data.json"; a.click(); URL.revokeObjectURL(a.href); toast("Downloaded data.json");
       });
 
-      // Load data.json into active account
       document.getElementById("loadJson").addEventListener("click", ()=>{
         if(!activeUser){ toast("Please sign in first"); return; }
         const i=document.createElement("input"); i.type="file"; i.accept=".json,application/json";
@@ -780,7 +669,15 @@
         i.click();
       });
 
-      // Export config+plan only
+      // Settings
+      document.getElementById("saveSettings").addEventListener("click", ()=>{
+        const dailyGoal=parseFloat(document.getElementById("dailyGoal").value)||settings.dailyGoal;
+        const pomoWork=parseInt(document.getElementById("pomoWork").value)||settings.pomoWork;
+        const pomoBreak=parseInt(document.getElementById("pomoBreak").value)||settings.pomoBreak;
+        if(dailyGoal<0 || pomoWork<1 || pomoBreak<1){ toast("Invalid settings values"); return; }
+        settings.dailyGoal=dailyGoal; settings.pomoWork=pomoWork; settings.pomoBreak=pomoBreak; persistActive();
+        document.getElementById("kGoal").textContent=settings.dailyGoal+"h"; toast("Settings saved");
+      });
       document.getElementById("exportJson").addEventListener("click", ()=>{
         if(!activeUser){ toast("Please sign in first"); return; }
         const payload={ settings, plan };
@@ -788,30 +685,12 @@
         a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}));
         a.download="config_plan.json"; a.click(); URL.revokeObjectURL(a.href); toast("Downloaded config_plan.json");
       });
-
-      document.getElementById("clearLogs").addEventListener("click", ()=>{
-        if(confirm("Clear ALL logs?")){ logs.length=0; persistActive(); renderLogTable(); drawCharts(); toast("Logs cleared"); }
-      });
-
-      document.getElementById("saveSettings").addEventListener("click", ()=>{
-        const dailyGoal=parseFloat(document.getElementById("dailyGoal").value)||settings.dailyGoal;
-        const pomoWork=parseInt(document.getElementById("pomoWork").value)||settings.pomoWork;
-        const pomoBreak=parseInt(document.getElementById("pomoBreak").value)||settings.pomoBreak;
-        if(dailyGoal<0 || pomoWork<1 || pomoBreak<1){ toast("Invalid settings values"); return; }
-        settings.dailyGoal=dailyGoal; settings.pomoWork=pomoWork; settings.pomoBreak=pomoBreak;
-        persistActive(); document.getElementById("kGoal").textContent=settings.dailyGoal+"h"; toast("Settings saved");
-      });
-
       document.getElementById("resetPlan").addEventListener("click", ()=>{
-        if(confirm("Reset plan to defaults?")){
-          activeUser.data.plan=JSON.parse(JSON.stringify(DEFAULT_PLAN)); bindActiveDataRefs(); persistActive();
-          renderPlanEditor(); renderToday(); toast("Plan reset");
-        }
+        if(confirm("Reset plan to defaults?")){ activeUser.data.plan=JSON.parse(JSON.stringify(DEFAULT_PLAN)); bindActiveDataRefs(); persistActive(); renderPlanEditor(); renderToday(); toast("Plan reset"); }
       });
 
-      document.addEventListener("keydown", e=>{
-        if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="s"){ e.preventDefault(); saveLog(); }
-      });
+      // Keyboard save
+      document.addEventListener("keydown", e=>{ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="s"){ e.preventDefault(); saveLog(); } });
     });
   </script>
 </body>
