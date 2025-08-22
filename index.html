@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,6 +9,64 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Firebase Modular SDK (module) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
+    import { getFirestore, collection, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js';
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-analytics.js";
+
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyC0-UNJFZxdAbC6HyWz5AYKjZQiXrY7Bbw",
+      authDomain: "studytracker-9d943.firebaseapp.com",
+      projectId: "studytracker-9d943",
+      storageBucket: "studytracker-9d943.appspot.com",
+      messagingSenderId: "996713049482",
+      appId: "1:996713049482:cba454d33262431132c73",
+      measurementId: "G-MYWCQX3LSK"
+    };
+
+    // Initialize Firebase safely
+    let app, auth, db, analytics;
+    try {
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+      try {
+        analytics = getAnalytics(app);
+        console.log('Analytics enabled');
+      } catch (e) {
+        console.warn('Analytics disabled:', e?.message || e);
+      }
+      console.log('Firebase initialized successfully');
+    } catch (e) {
+      console.error('Firebase initialization failed:', e);
+    }
+
+    // Export to global scope for non-module script
+    Object.assign(window, {
+      app,
+      auth,
+      db,
+      // auth fns
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged,
+      // firestore fns
+      collection,
+      doc,
+      setDoc,
+      getDoc
+    });
+
+    window.__firebaseReady = !!app && !!auth && !!db;
+  </script>
+
   <style>
     :root {
       --bg: #0f1226;
@@ -35,7 +95,8 @@
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body { margin: 0; background: linear-gradient(180deg, var(--bg), #0b0e22); color: var(--text); font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .app { max-width: 1200px; margin: 0 auto; padding: 20px; display: none; }
+    .app.active { display: block; }
     header { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
     .title { display: flex; align-items: center; gap: 12px; }
     .title h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); font-weight: 800; letter-spacing: .3px; }
@@ -44,23 +105,20 @@
     .grid.cols-3 { grid-template-columns: 1.2fr .9fr .9fr; }
     .grid.cols-2 { grid-template-columns: 1fr 1fr; }
     @media (max-width: 980px) { .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; } }
-
     .card { background: linear-gradient(180deg, var(--card), #121533); border: 1px solid #272a55; border-radius: 18px; box-shadow: 0 8px 30px rgba(11, 14, 34, .3); padding: 16px; transition: transform 0.3s ease; }
     .card h2 { margin: 0 0 10px; font-size: 18px; }
     .sub { color: var(--muted); font-size: 13px; }
-
     .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
     .btn { border: none; background: linear-gradient(90deg, var(--soft), #111432); color: var(--text); padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: inset 0 0 0 1px #2a2e60; }
     .btn.primary { background: linear-gradient(90deg, #7c3aed, #4f46e5); box-shadow: 0 6px 18px var(--ring); }
     .btn.green { background: linear-gradient(90deg, #10b981, #059669); box-shadow: 0 6px 18px rgba(16, 185, 129, .35); }
     .btn.red { background: linear-gradient(90deg, #ef4444, #b91c1c); box-shadow: 0 6px 18px rgba(239, 68, 68, .35); }
+    .btn.google { background: linear-gradient(90deg, #4285f4, #3b79e0); }
     .btn:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
-
     nav { display: flex; gap: 8px; flex-wrap: wrap; transition: opacity 0.3s ease; }
     .tab { padding: 10px 14px; border-radius: 12px; background: linear-gradient(180deg, var(--soft), #0f1233); border: 1px solid #2a2e60; color: var(--text); cursor: pointer; font-weight: 700; }
     .tab.active { background: linear-gradient(90deg, #7c3aed, #4f46e5); }
     .tab:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }
-
     .tasks { display: flex; flex-direction: column; gap: 12px; }
     .task-card { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; padding: 12px; border-radius: 14px; background: linear-gradient(180deg, #131740, #0e1030); border: 1px solid #2a2e60; cursor: move; }
     .task-card.dragging { opacity: 0.5; transform: scale(0.98); }
@@ -68,13 +126,11 @@
     .badge { font-size: 11px; padding: 4px 8px; border-radius: 999px; background: rgba(124, 58, 237, .15); border: 1px solid #3b2a78; }
     .task-note { width: 100%; padding: 8px; border-radius: 10px; border: 1px solid #2a2e60; background: #0b0e2b; color: var(--text); min-height: 40px; }
     .small { font-size: 12px; color: var(--muted); }
-
     .table { width: 100%; border-collapse: collapse; }
     .table th, .table td { border-bottom: 1px dashed #2a2e60; padding: 10px; text-align: left; }
     .kpi { display: flex; gap: 14px; flex-wrap: wrap; }
     .kpi .k { flex: 1; min-width: 160px; border-radius: 16px; padding: 14px; background: linear-gradient(180deg, #131740, #0e1134); border: 1px solid #2a2e60; }
     .k .v { font-weight: 800; font-size: 22px; }
-
     .chip { background: #0b0f2d; border: 1px solid #2a2e60; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
     .flex { display: flex; gap: 10px; align-items: center; }
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -82,26 +138,41 @@
     .sep { height: 1px; background: #2a2e60; margin: 8px 0; }
     .mt8 { margin-top: 8px; }
     .mt12 { margin-top: 12px; }
-    .mt16 { margin-top: 16px; }
     .mb8 { margin-bottom: 8px; }
-
-    input[type="number"], select { background: #0b0e2b; color: var(--text); border: 1px solid #2a2e60; border-radius: 10px; padding: 8px; }
-    input[type="text"], textarea, [contenteditable] { background: #0b0e2b; color: var(--text); border: 1px solid #2a2e60; border-radius: 10px; padding: 8px; }
+    input[type="number"], select, input[type="email"], input[type="password"], input[type="text"], textarea, [contenteditable] { background: #0b0e2b; color: var(--text); border: 1px solid #2a2e60; border-radius: 10px; padding: 8px; }
     label { font-size: 12px; color: var(--muted); }
-
     .progress { height: 10px; background: #0b0e2b; border-radius: 999px; border: 1px solid #2a2e60; overflow: hidden; }
     .progress > div { height: 100%; background: linear-gradient(90deg, #10b981, #06b6d4); transition: width 0.3s ease; }
-
     .syllabus .group { margin-bottom: 14px; }
     .syllabus .group h3 { margin: 0 0 6px; font-size: 15px; }
     .syllabus .topic { display: inline-flex; align-items: center; margin: 4px 6px 0 0; padding: 6px 10px; border-radius: 999px; background: #10143a; border: 1px solid #2a2e60; font-size: 12px; }
     .syllabus .topic input { margin-right: 6px; }
-
     .toast { position: fixed; right: 16px; bottom: 16px; background: #10143a; border: 1px solid #2a2e60; color: var(--text); padding: 12px 14px; border-radius: 14px; box-shadow: 0 10px 24px rgba(0, 0, 0, .35); opacity: 0; transform: translateY(10px); transition: opacity 0.25s ease, transform 0.25s ease; }
     .toast.show { opacity: 1; transform: translateY(0); }
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, .7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-content { background: var(--card); border-radius: 18px; padding: 20px; width: 100%; max-width: 400px; }
+    .modal-content h2 { margin: 0 0 16px; font-size: 20px; }
+    .modal-content input { width: 100%; margin-bottom: 12px; }
+    .modal-content .btn { width: 100%; margin: 8px 0; }
+    .modal-content .error { color: var(--danger); font-size: 12px; margin-top: 8px; }
+    .loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, .7); display: flex; align-items: center; justify-content: center; color: var(--text); font-size: 18px; z-index: 1000; }
   </style>
 </head>
 <body>
+  <div class="loading" id="loading">Loading...</div>
+
+  <div class="modal" id="loginModal" style="display:none">
+    <div class="modal-content">
+      <h2>Login to Study Tracker</h2>
+      <input type="email" id="email" placeholder="Email" aria-label="Email" />
+      <input type="password" id="password" placeholder="Password" aria-label="Password" />
+      <button class="btn primary" id="loginBtn">Login</button>
+      <button class="btn" id="signupBtn">Sign Up</button>
+      <button class="btn google" id="googleBtn">Sign in with Google</button>
+      <div class="error" id="authError"></div>
+    </div>
+  </div>
+
   <div class="app" id="app" data-theme="dark">
     <header>
       <div class="title">
@@ -109,6 +180,8 @@
         <h1>Study Tracker · Data Science & AI</h1>
       </div>
       <div class="row right">
+        <span class="chip" id="userChip"></span>
+        <button class="btn" id="logoutBtn" aria-label="Logout">🚪 Logout</button>
         <button class="btn" id="themeToggle" aria-label="Toggle theme">🌗 Theme</button>
         <button class="btn" id="focusToggle" aria-label="Toggle focus mode">🎯 Focus</button>
         <span class="chip" id="todayChip">📅</span>
@@ -124,7 +197,6 @@
     </nav>
 
     <div class="grid cols-3">
-      <!-- TODAY -->
       <section id="today" class="card" style="grid-column: 1 / span 2;" role="tabpanel">
         <h2>Today's Plan <span class="sub" id="cycleText"></span></h2>
         <div class="kpi">
@@ -144,13 +216,11 @@
         <div class="tasks mt12" id="taskList" role="list"></div>
       </section>
 
-      <!-- SYLLABUS -->
       <section id="syllabus" class="card" style="display:none" role="tabpanel">
         <h2>DA Syllabus Map</h2>
         <div class="syllabus" id="syllabusBox"></div>
       </section>
 
-      <!-- LOG -->
       <section id="log" class="card" style="grid-column:1 / span 2; display:none" role="tabpanel">
         <h2>Logs</h2>
         <div class="toolbar">
@@ -164,7 +234,6 @@
         </table>
       </section>
 
-      <!-- DASHBOARD -->
       <section id="dashboard" class="card" style="display:none" role="tabpanel">
         <h2>Dashboard</h2>
         <div class="grid cols-2">
@@ -191,7 +260,6 @@
         </div>
       </section>
 
-      <!-- SETTINGS -->
       <section id="settings" class="card" style="display:none" role="tabpanel">
         <h2>Settings</h2>
         <div class="grid cols-2">
@@ -222,719 +290,1000 @@
   <div class="toast" id="toast" role="alert">Saved</div>
 
   <script>
-  // ------------------------
-  // Data & Defaults
-  // ------------------------
-  const SYLLABUS = {
-    "Probability & Statistics": [
-      "Counting (perm/comb)", "Axioms, sample space, events",
-      "Independence, mutual exclusivity", "Marginal/conditional/joint prob",
-      "Bayes theorem", "Cond. expectation & variance",
-      "Mean/Median/Mode/SD", "Correlation & Covariance",
-      "RVs: discrete/pmf, continuous/pdf, CDF",
-      "Distributions: Uniform, Bernoulli, Binomial, Poisson, Exponential, Normal, Standard Normal, t, Chi-squared",
-      "CLT", "Confidence intervals", "z/t/chi-squared tests"
-    ],
-    "Linear Algebra": [
-      "Vector spaces & subspaces", "Linear dependence/independence",
-      "Matrices (projection/orthogonal/idempotent/partition)",
-      "Quadratic forms", "Systems & Gaussian elimination",
-      "Eigenvalues/Eigenvectors", "Determinant, Rank, Nullity, Projections",
-      "LU, SVD"
-    ],
-    "Calculus & Optimization": [
-      "Single variable functions", "Limit/Continuity/Differentiability",
-      "Taylor series", "Maxima/Minima", "Single-variable optimization"
-    ],
-    "Programming & DSA": [
-      "Python basics", "Stacks/Queues/Linked Lists/Trees/Hash Tables",
-      "Search: Linear/Binary", "Sorting: Selection/Bubble/Insertion",
-      "Divide-Conquer: Merge/Quick", "Graph intro & Traversals/Shortest path"
-    ],
-    "DBMS & Warehousing": [
-      "ER model", "Relational algebra & tuple calculus", "SQL",
-      "Integrity constraints", "Normal forms", "File org & Indexing",
-      "Data types & transformation: normalization, discretization, sampling, compression",
-      "Warehouse: schema, hierarchies, measures"
-    ],
-    "ML — Supervised": [
-      "Regression (simple/multiple/ridge)", "Logistic regression",
-      "k-NN", "Naive Bayes", "LDA",
-      "SVM", "Decision Trees",
-      "Bias-variance trade-off", "Cross-Validation: LOO, k-folds",
-      "MLP/Feed-forward NN"
-    ],
-    "ML — Unsupervised & PCA": [
-      "Clustering: k-means/k-medoids", "Hierarchical (top-down/bottom-up)",
-      "Single/Complete/Avg-linkage", "Dimensionality Reduction",
-      "PCA"
-    ],
-    "AI (Search/Logic/Uncertainty)": [
-      "Search: Informed/Uninformed/Adversarial",
-      "Logic: Propositional & Predicate",
-      "Uncertainty: Conditional independence, Variable elimination (exact), Sampling (approx.)"
-    ],
-    "Aptitude/Revision/PYQs": [
-      "Aptitude", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Formula/Notes"
-    ]
-  };
-
-  const DEFAULT_PLAN = {
-    1: ["Probability & Statistics", "Programming & DSA", "ML — Supervised", "PYQs: Stats + DSA"],
-    2: ["Linear Algebra", "DBMS & Warehousing", "AI (Search/Logic/Uncertainty)", "PYQs: LA + DBMS"],
-    3: ["Calculus & Optimization", "Programming & DSA", "ML — Supervised", "PYQs: Calc + Algos"],
-    4: ["Probability & Statistics", "Programming & DSA", "AI (Search/Logic/Uncertainty)", "PYQs: Prob + Prog"],
-    5: ["Linear Algebra", "DBMS & Warehousing", "ML — Supervised", "PYQs: LA + DBMS"],
-    6: ["Calculus & Optimization", "Programming & DSA", "ML — Unsupervised & PCA", "PYQs: Opt + Graphs"],
-    7: ["Test: Stats", "Test: LA", "Weak Area Patch", "Formula/Notes"],
-    8: ["Aptitude/Revision/PYQs", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Light Revision"]
-  };
-
-  // localStorage keys
-  const LS = {
-    settings: 'gateda_settings',
-    plan: 'gateda_plan',
-    logs: 'gateda_logs',
-    syllabusProgress: 'gateda_syllabus_progress'
-  };
-
-  const todayISO = new Date().toISOString().slice(0, 10);
-
-  // Settings model
-  let settings = load(LS.settings, {
-    theme: 'dark',
-    dailyGoal: 6,
-    pomoWork: 25,
-    pomoBreak: 5,
-    startDate: todayISO,
-    xp: 0,
-    badges: []
-  });
-  let plan = load(LS.plan, DEFAULT_PLAN);
-  let logs = load(LS.logs, []);
-  let syllabusProgress = load(LS.syllabusProgress, {});
-
-  // ------------------------
-  // Helpers
-  // ------------------------
-  function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { console.error('Save failed:', e); } }
-  function load(key, def) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? def; } catch { return def; } }
-  function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
-  function cycleDay() { const s = new Date(settings.startDate), d = new Date(); const diff = Math.floor((d - s) / (1000 * 60 * 60 * 24)); return (diff % 8) + 1; }
-  function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
-  function sum(a) { return a.reduce((x, y) => x + y, 0); }
-  function fmtTime(ms) {
-    let s = Math.floor(ms / 1000);
-    const h = Math.floor(s / 3600); s -= h * 3600;
-    const m = Math.floor(s / 60); s -= m * 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-  function debounce(fn, ms) {
-    let timeout;
-    return (...args) => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => fn(...args), ms);
-    };
-  }
-
-  // ------------------------
-  // UI Init
-  // ------------------------
-  const appEl = document.getElementById('app');
-  appEl.dataset.theme = settings.theme;
-  document.getElementById('todayChip').textContent = '📅 ' + todayISO;
-  document.getElementById('kGoal').textContent = settings.dailyGoal + 'h';
-  document.getElementById('dailyGoal').value = settings.dailyGoal;
-  document.getElementById('pomoWork').value = settings.pomoWork;
-  document.getElementById('pomoBreak').value = settings.pomoBreak;
-
-  // Tabs with accessibility
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(b => {
-        b.classList.remove('active');
-        b.setAttribute('aria-selected', 'false');
-      });
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected', 'true');
-      const id = btn.dataset.tab;
-      ['today', 'syllabus', 'log', 'dashboard', 'settings'].forEach(x => {
-        document.getElementById(x).style.display = x === id ? 'block' : 'none';
-      });
-      if (id === 'dashboard') drawCharts();
-      if (id === 'log') renderLogTable();
-      if (id === 'syllabus') renderSyllabus();
-      if (id === 'settings') renderPlanEditor();
-    });
-  });
-
-  // Theme toggle & Focus mode
-  document.getElementById('themeToggle').onclick = () => {
-    settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
-    appEl.dataset.theme = settings.theme;
-    save(LS.settings, settings);
-    toast('Theme switched');
-  };
-  let focus = false;
-  document.getElementById('focusToggle').onclick = () => {
-    focus = !focus;
-    document.body.style.filter = focus ? 'saturate(1.05)' : 'none';
-    document.querySelector('nav').style.display = focus ? 'none' : 'flex';
-    toast(focus ? 'Focus ON — distractions hidden' : 'Focus OFF');
-  };
-
-  // Build Today list with drag-and-drop
-  function subjectsForToday() {
-    const d = cycleDay();
-    const order = load('taskOrder_' + d, plan[d] || []);
-    return order.length ? order : plan[d] || [];
-  }
-
-  const taskList = document.getElementById('taskList');
-  const timers = new Map();
-
-  function renderToday() {
-    document.getElementById('cycleText').textContent = `Day ${cycleDay()} • 8-Day rotating plan`;
-    taskList.innerHTML = '';
-    timers.clear();
-    subjectsForToday().forEach(sub => taskList.appendChild(makeTaskCard(sub)));
-    updateKPIs();
-    enableDragAndDrop();
-    loadDraft();
-  }
-
-  function makeTaskCard(subject) {
-    const card = document.createElement('div');
-    card.className = 'task-card';
-    card.draggable = true;
-    card.setAttribute('role', 'listitem');
-
-    const left = document.createElement('div');
-    left.innerHTML = `<div class="task-title">${subject}</div><div class="small">Max 3h/day per subject</div>`;
-
-    const controls = document.createElement('div');
-    controls.className = 'row';
-    const hours = document.createElement('input');
-    hours.type = 'number';
-    hours.min = 0;
-    hours.max = 3;
-    hours.step = 0.25;
-    hours.value = '0';
-    hours.setAttribute('aria-label', 'Hours studied');
-    hours.addEventListener('input', () => { if (hours.value < 0) hours.value = 0; if (hours.value > 3) hours.value = 3; });
-    const mode = document.createElement('select');
-    ['Deep Work', 'Review', 'Practice', 'PYQs', 'Test'].forEach(m => {
-      const o = document.createElement('option');
-      o.value = m;
-      o.textContent = m;
-      mode.appendChild(o);
-    });
-    mode.setAttribute('aria-label', 'Study mode');
-    const priority = document.createElement('select');
-    ['Low', 'Medium', 'High'].forEach(p => {
-      const o = document.createElement('option');
-      o.value = p;
-      o.textContent = p;
-      priority.appendChild(o);
-    });
-    priority.setAttribute('aria-label', 'Priority');
-    const done = document.createElement('input');
-    done.type = 'checkbox';
-    done.setAttribute('aria-label', 'Task completed');
-    controls.append(newBadge('Hours'), hours, newBadge('Mode'), mode, newBadge('Priority'), priority, newBadge('Done'), done);
-
-    const timerBox = document.createElement('div');
-    timerBox.className = 'row';
-    const tlabel = document.createElement('span');
-    tlabel.className = 'badge';
-    tlabel.textContent = '00:00:00';
-    const startBtn = btn('▶ Start');
-    const pauseBtn = btn('⏸ Pause');
-    const stopBtn = btn('■ Stop');
-    const pomoChk = document.createElement('input');
-    pomoChk.type = 'checkbox';
-    pomoChk.setAttribute('aria-label', 'Enable Pomodoro');
-    const pomoLbl = document.createElement('span');
-    pomoLbl.className = 'badge';
-    pomoLbl.textContent = '🍅 0';
-    timerBox.append(tlabel, startBtn, pauseBtn, stopBtn, newBadge('Pomodoro'), pomoChk, pomoLbl);
-
-    const notes = document.createElement('div');
-    notes.className = 'task-note';
-    notes.contentEditable = true;
-    notes.setAttribute('aria-label', 'Task notes');
-    notes.innerHTML = 'Notes…';
-    notes.addEventListener('focus', () => { if (notes.innerHTML === 'Notes…') notes.innerHTML = ''; });
-    notes.addEventListener('blur', () => { if (!notes.innerHTML.trim()) notes.innerHTML = 'Notes…'; });
-
-    // Timer logic
-    const state = timers.get(subject) || { running: false, paused: false, start: 0, elapsed: 0, pomos: 0 };
-    timers.set(subject, state);
-
-    startBtn.onclick = () => {
-      if (state.running || state.paused) return;
-      state.running = true;
-      state.start = Date.now() - state.elapsed;
-      tick();
-      toast(`Timer started for ${subject}`);
-    };
-    pauseBtn.onclick = () => {
-      if (!state.running || state.paused) return;
-      state.paused = true;
-      state.running = false;
-      state.elapsed = Date.now() - state.start;
-      toast(`Timer paused for ${subject}`);
-    };
-    stopBtn.onclick = () => {
-      if (!state.running && !state.paused) return;
-      state.running = false;
-      state.paused = false;
-      state.elapsed = Date.now() - state.start;
-      const hrs = Math.min(3, Math.round((state.elapsed / 3600000) * 100) / 100);
-      hours.value = Math.max(parseFloat(hours.value || 0), hrs);
-      updateKPIs();
-      saveDraft();
-      toast(`Timer stopped for ${subject}`);
+    // -----------------------
+    // Data & Defaults
+    // -----------------------
+    const SYLLABUS = {
+      "Probability & Statistics": [
+        "Counting (perm/comb)", "Axioms, sample space, events",
+        "Independence, mutual exclusivity", "Marginal/conditional/joint prob",
+        "Bayes theorem", "Cond. expectation & variance",
+        "Mean/Median/Mode/SD", "Correlation & Covariance",
+        "RVs: discrete/pmf, continuous/pdf, CDF",
+        "Distributions: Uniform, Bernoulli, Binomial, Poisson, Exponential, Normal, Standard Normal, t, Chi-squared",
+        "CLT", "Confidence intervals", "z/t/chi-squared tests"
+      ],
+      "Linear Algebra": [
+        "Vector spaces & subspaces", "Linear dependence/independence",
+        "Matrices (projection/orthogonal/idempotent/partition)",
+        "Quadratic forms", "Systems & Gaussian elimination",
+        "Eigenvalues/Eigenvectors", "Determinant, Rank, Nullity, Projections",
+        "LU, SVD"
+      ],
+      "Calculus & Optimization": [
+        "Single variable functions", "Limit/Continuity/Differentiability",
+        "Taylor series", "Maxima/Minima", "Single-variable optimization"
+      ],
+      "Programming & DSA": [
+        "Python basics", "Stacks/Queues/Linked Lists/Trees/Hash Tables",
+        "Search: Linear/Binary", "Sorting: Selection/Bubble/Insertion",
+        "Divide-Conquer: Merge/Quick", "Graph intro & Traversals/Shortest path"
+      ],
+      "DBMS & Warehousing": [
+        "ER model", "Relational algebra & tuple calculus", "SQL",
+        "Integrity constraints", "Normal forms", "File org & Indexing",
+        "Data types & transformation: normalization, discretization, sampling, compression",
+        "Warehouse: schema, hierarchies, measures"
+      ],
+      "ML — Supervised": [
+        "Regression (simple/multiple/ridge)", "Logistic regression",
+        "k-NN", "Naive Bayes", "LDA",
+        "SVM", "Decision Trees",
+        "Bias-variance trade-off", "Cross-Validation: LOO, k-folds",
+        "MLP/Feed-forward NN"
+      ],
+      "ML — Unsupervised & PCA": [
+        "Clustering: k-means/k-medoids", "Hierarchical (top-down/bottom-up)",
+        "Single/Complete/Avg-linkage", "Dimensionality Reduction",
+        "PCA"
+      ],
+      "AI (Search/Logic/Uncertainty)": [
+        "Search: Informed/Uninformed/Adversarial",
+        "Logic: Propositional & Predicate",
+        "Uncertainty: Conditional independence, Variable elimination (exact), Sampling (approx.)"
+      ],
+      "Aptitude/Revision/PYQs": [
+        "Aptitude", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Formula/Notes"
+      ]
     };
 
-    function tick() {
-      if (!state.running) return;
-      state.elapsed = Date.now() - state.start;
-      tlabel.textContent = fmtTime(state.elapsed);
-      if (pomoChk.checked) {
-        const work = settings.pomoWork * 60 * 1000, brk = settings.pomoBreak * 60 * 1000, cyc = work + brk;
-        const e = Math.floor(state.elapsed / cyc);
-        if (e > state.pomos) {
-          state.pomos = e;
-          pomoLbl.textContent = '🍅 ' + state.pomos;
-          notify(`Pomodoro complete for ${subject}`);
-        }
-      }
-      requestAnimationFrame(tick);
-    }
-
-    // Debounced input handling
-    const debouncedSave = debounce(() => { updateKPIs(); saveDraft(); }, 300);
-    [hours, mode, priority, done, notes, pomoChk].forEach(el => el.addEventListener('input', debouncedSave));
-
-    // Drag-and-drop events
-    card.addEventListener('dragstart', () => card.classList.add('dragging'));
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-
-    // Store refs
-    card._refs = { subject, hours, mode, priority, done, notes, state };
-    card.append(left, controls, timerBox, notes);
-    return card;
-  }
-
-  function newBadge(txt) { const s = document.createElement('span'); s.className = 'badge'; s.textContent = txt; return s; }
-  function btn(txt) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = txt; b.setAttribute('aria-label', txt); return b; }
-
-  // Drag-and-Drop for Task Ordering
-  function enableDragAndDrop() {
-    taskList.addEventListener('dragover', e => {
-      e.preventDefault();
-      const afterElement = getDragAfterElement(taskList, e.clientY);
-      const dragging = document.querySelector('.dragging');
-      if (afterElement == null) {
-        taskList.appendChild(dragging);
-      } else {
-        taskList.insertBefore(dragging, afterElement);
-      }
-    });
-    taskList.addEventListener('drop', () => {
-      const order = [...taskList.querySelectorAll('.task-card')].map(c => c._refs.subject);
-      save('taskOrder_' + cycleDay(), order);
-    });
-  }
-
-  function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.task-card:not(.dragging)')];
-    return draggableElements.reduce((closest, child) => {
-      const box = child.getBoundingClientRect();
-      const offset = y - box.top - box.height / 2;
-      if (offset < 0 && offset > closest.offset) {
-        return { offset, element: child };
-      }
-      return closest;
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-  }
-
-  // KPIs and Progress
-  function updateKPIs() {
-    const cards = [...document.querySelectorAll('.task-card')];
-    const total = sum(cards.map(c => parseFloat(c._refs.hours.value || 0)));
-    const done = cards.filter(c => c._refs.done.checked).length;
-    document.getElementById('kToday').textContent = fmt(total) + 'h';
-    document.getElementById('kDone').textContent = String(done);
-    const pct = Math.min(100, (total / settings.dailyGoal) * 100);
-    document.getElementById('goalBar').style.width = pct + '%';
-    document.getElementById('kStreak').textContent = String(streakDays());
-    const avgHours = logs.length ? fmt(logs.reduce((a, b) => a + (b.Hours || 0), 0) / Object.keys(groupBy(logs, 'Date')).length) : '0.0';
-    document.getElementById('kAvgHours').textContent = avgHours + 'h';
-  }
-
-  // Save Log
-  function currentRows() {
-    const rows = [];
-    const date = todayISO;
-    document.querySelectorAll('.task-card').forEach(c => {
-      const r = c._refs;
-      const hours = parseFloat(r.hours.value || 0);
-      if (hours > 0 || r.done.checked || r.notes.textContent.trim() !== 'Notes…') {
-        rows.push({
-          Date: date,
-          Subject: r.subject,
-          Completed: r.done.checked,
-          Hours: hours,
-          Notes: r.notes.textContent.trim() === 'Notes…' ? '' : r.notes.textContent.trim(),
-          Priority: r.priority.value,
-          Mode: r.mode.value,
-          Pomodoros: r.state?.pomos || 0,
-          XP: xpFrom(hours, r.done.checked, r.priority.value)
-        });
-      }
-    });
-    return rows;
-  }
-
-  function xpFrom(hours, completed, priority) {
-    const base = Math.round(hours * 10);
-    const bonus = completed ? 10 : 0;
-    const pr = { Low: 0, Medium: 5, High: 10 }[priority] || 0;
-    return base + bonus + pr;
-  }
-
-  function saveLog() {
-    const rows = currentRows();
-    if (!rows.length) {
-      toast('No data to save');
-      return;
-    }
-    logs.push(...rows);
-    save(LS.logs, logs);
-    settings.xp = (settings.xp || 0) + rows.reduce((a, b) => a + b.XP, 0);
-    const totalHours = logs.reduce((a, b) => a + (b.Hours || 0), 0);
-    const badges = new Set(settings.badges || []);
-    [[10, 'Rookie'], [50, 'Committed'], [100, 'Centurion'], [200, 'Marathoner']].forEach(([h, name]) => {
-      if (totalHours >= h) badges.add(name);
-    });
-    settings.badges = [...badges];
-    save(LS.settings, settings);
-    notify('Log saved!');
-    toast('Log saved');
-    renderLogTable();
-    updateKPIs();
-    sessionStorage.removeItem('todayDraft');
-  }
-
-  // Streak
-  function streakDays() {
-    const goal = settings.dailyGoal;
-    const byDate = {};
-    logs.forEach(r => { byDate[r.Date] = (byDate[r.Date] || 0) + (r.Hours || 0); });
-    let cur = new Date();
-    let streak = 0;
-    for (let i = 0; i < 365; i++) {
-      const iso = cur.toISOString().slice(0, 10);
-      if ((byDate[iso] || 0) >= goal) {
-        streak++;
-        cur.setDate(cur.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  // Log Table
-  function renderLogTable() {
-    const tb = document.getElementById('logTable');
-    tb.innerHTML = '';
-    logs.forEach((r, i) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${r.Date}</td><td>${r.Subject}</td><td>${fmt(r.Hours || 0)}</td><td>${r.Completed ? '✅' : '—'}</td><td>${r.Priority || ''}</td><td>${r.Mode || ''}</td><td>${r.Pomodoros || 0}</td><td>${(r.Notes || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`;
-      tb.appendChild(tr);
-    });
-  }
-
-  // Charts
-  let charts = [];
-  function clearCharts() { charts.forEach(c => c.destroy()); charts = []; }
-  function groupBy(arr, key) {
-    return arr.reduce((acc, item) => {
-      acc[item[key]] = acc[item[key]] || [];
-      acc[item[key]].push(item);
-      return acc;
-    }, {});
-  }
-  function drawCharts() {
-    clearCharts();
-    const byDate = {};
-    const bySubject = {};
-    const byCategory = {};
-    let comp = 0;
-    logs.forEach(r => {
-      byDate[r.Date] = (byDate[r.Date] || 0) + (r.Hours || 0);
-      bySubject[r.Subject] = (bySubject[r.Subject] || 0) + (r.Hours || 0);
-      const cat = Object.keys(SYLLABUS).find(c => SYLLABUS[c].some(t => r.Subject.includes(t))) || 'Other';
-      byCategory[cat] = (byCategory[cat] || 0) + (r.Hours || 0);
-      if (r.Completed) comp++;
-    });
-    const dates = Object.keys(byDate).sort();
-    const hours = dates.map(d => byDate[d]);
-    const chartOptions = {
-      plugins: { legend: { display: false } },
-      scales: { x: { ticks: { color: getComputedStyle(document.body).getPropertyValue('--text') } }, y: { beginAtZero: true } }
+    const DEFAULT_PLAN = {
+      1: ["Probability & Statistics", "Programming & DSA", "ML — Supervised", "PYQs: Stats + DSA"],
+      2: ["Linear Algebra", "DBMS & Warehousing", "AI (Search/Logic/Uncertainty)", "PYQs: LA + DBMS"],
+      3: ["Calculus & Optimization", "Programming & DSA", "ML — Supervised", "PYQs: Calc + Algos"],
+      4: ["Probability & Statistics", "Programming & DSA", "AI (Search/Logic/Uncertainty)", "PYQs: Prob + Prog"],
+      5: ["Linear Algebra", "DBMS & Warehousing", "ML — Supervised", "PYQs: LA + DBMS"],
+      6: ["Calculus & Optimization", "Programming & DSA", "ML — Unsupervised & PCA", "PYQs: Opt + Graphs"],
+      7: ["Test: Stats", "Test: LA", "Weak Area Patch", "Formula/Notes"],
+      8: ["Aptitude/Revision/PYQs", "Mixed PYQs (MSQ/NAT)", "Mini Projects/Case", "Light Revision"]
     };
-    charts.push(new Chart(document.getElementById('dailyChart'), {
-      type: 'line',
-      data: { labels: dates, datasets: [{ label: 'Hours', data: hours, borderColor: '#10b981' }] },
-      options: chartOptions
-    }));
-    charts.push(new Chart(document.getElementById('subjectChart'), {
-      type: 'bar',
-      data: { labels: Object.keys(bySubject), datasets: [{ label: 'Hours', data: Object.values(bySubject), backgroundColor: '#7c3aed' }] },
-      options: chartOptions
-    }));
-    const total = logs.length;
-    charts.push(new Chart(document.getElementById('completionChart'), {
-      type: 'doughnut',
-      data: { labels: ['Completed', 'Pending'], datasets: [{ data: [comp, Math.max(0, total - comp)], backgroundColor: ['#10b981', '#ef4444'] }] },
-      options: {}
-    }));
-    charts.push(new Chart(document.getElementById('categoryChart'), {
-      type: 'bar',
-      data: { labels: Object.keys(byCategory), datasets: [{ label: 'Hours', data: Object.values(byCategory), backgroundColor: '#4f46e5' }] },
-      options: chartOptions
-    }));
-    const last7Dates = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      last7Dates.push(d.toISOString().slice(0, 10));
+
+    const FS = {
+      settings: 'settings',
+      plan: 'plan',
+      logs: 'logs',
+      syllabusProgress: 'syllabusProgress',
+      taskOrder: 'taskOrder'
+    };
+
+    const todayISO = new Date().toISOString().slice(0, 10);
+
+    let settings = {
+      theme: 'dark',
+      dailyGoal: 6,
+      pomoWork: 25,
+      pomoBreak: 5,
+      startDate: todayISO,
+      xp: 0,
+      badges: []
+    };
+    let plan = JSON.parse(JSON.stringify(DEFAULT_PLAN));
+    let logs = [];
+    let syllabusProgress = {};
+    let taskOrder = {};
+    let user = null;
+
+    const appEl = document.getElementById('app');
+    const loginModal = document.getElementById('loginModal');
+    const loadingEl = document.getElementById('loading');
+    const authError = document.getElementById('authError');
+    const taskList = document.getElementById('taskList');
+    const timers = new Map();
+    let focus = false;
+    let charts = [];
+
+    // -----------------------
+    // Helpers
+    // -----------------------
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2000);
     }
-    charts.push(new Chart(document.getElementById('last7Chart'), {
-      type: 'bar',
-      data: { labels: last7Dates, datasets: [{ label: 'Hours', data: last7Dates.map(d => byDate[d] || 0), backgroundColor: '#10b981' }] },
-      options: chartOptions
-    }));
-  }
 
-  // Syllabus Render with Progress
-  function renderSyllabus() {
-    const box = document.getElementById('syllabusBox');
-    box.innerHTML = '';
-    Object.entries(SYLLABUS).forEach(([cat, items]) => {
-      const g = document.createElement('div');
-      g.className = 'group';
-      const h = document.createElement('h3');
-      const completed = items.filter(t => syllabusProgress[`${cat}:${t}`]).length;
-      h.innerHTML = `${cat} <span class="chip">${completed}/${items.length} completed</span>`;
-      g.appendChild(h);
-      items.forEach(t => {
-        const s = document.createElement('span');
-        s.className = 'topic';
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = !!syllabusProgress[`${cat}:${t}`];
-        chk.addEventListener('change', () => {
-          syllabusProgress[`${cat}:${t}`] = chk.checked;
-          save(LS.syllabusProgress, syllabusProgress);
-          renderSyllabus();
-          toast(chk.checked ? `Marked ${t} as completed` : `Unmarked ${t}`);
-        });
-        s.appendChild(chk);
-        s.append(t);
-        g.appendChild(s);
-      });
-      box.appendChild(g);
-    });
-  }
-
-  // Plan Editor
-  function renderPlanEditor() {
-    const host = document.getElementById('planEditor');
-    host.innerHTML = '';
-    for (let d = 1; d <= 8; d++) {
-      const c = document.createElement('div');
-      c.className = 'card';
-      const h = document.createElement('h4');
-      h.textContent = 'Day ' + d;
-      c.appendChild(h);
-      const area = document.createElement('textarea');
-      area.style.width = '100%';
-      area.rows = 3;
-      area.value = (plan[d] || []).join('\n');
-      c.appendChild(area);
-      const saveBtn = btn('Save Day ' + d);
-      saveBtn.onclick = () => {
-        plan[d] = area.value.split('\n').map(x => x.trim()).filter(Boolean);
-        save(LS.plan, plan);
-        toast('Saved Day ' + d);
-        renderToday();
-      };
-      c.appendChild(saveBtn);
-      host.appendChild(c);
+    function fmt(n) {
+      return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
     }
-  }
 
-  // Persist draft inputs for today
-  function saveDraft() {
-    const draft = currentRows();
-    sessionStorage.setItem('todayDraft', JSON.stringify(draft));
-  }
-
-  function loadDraft() {
-    try {
-      const d = JSON.parse(sessionStorage.getItem('todayDraft')) || [];
-      d.forEach(dr => {
-        const card = [...document.querySelectorAll('.task-card')].find(c => c._refs.subject === dr.Subject);
-        if (card) {
-          card._refs.hours.value = dr.Hours || 0;
-          card._refs.done.checked = !!dr.Completed;
-          card._refs.mode.value = dr.Mode || 'Deep Work';
-          card._refs.priority.value = dr.Priority || 'Medium';
-          card._refs.notes.innerHTML = dr.Notes || 'Notes…';
-        }
-      });
-      updateKPIs();
-    } catch (e) {
-      console.error('Load draft failed:', e);
+    function sum(a) {
+      return a.reduce((x, y) => x + y, 0);
     }
-  }
 
-  // Notifications
-  function notify(msg) {
-    if ('Notification' in window) {
+    function fmtTime(ms) {
+      let s = Math.floor(ms / 1000);
+      const h = Math.floor(s / 3600); s -= h * 3600;
+      const m = Math.floor(s / 60); s -= m * 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function cycleDay() {
+      const s = new Date(settings.startDate), d = new Date();
+      const diff = Math.floor((d - s) / (1000 * 60 * 60 * 24));
+      return (diff % 8) + 1;
+    }
+
+    function groupBy(arr, key) {
+      return arr.reduce((acc, item) => {
+        acc[item[key]] = acc[item[key]] || [];
+        acc[item[key]].push(item);
+        return acc;
+      }, {});
+    }
+
+    async function save(key, val) {
+      if (!user || !window.db) {
+        toast('Not logged in or Firebase not initialized');
+        console.error('Save failed: User or db not initialized');
+        return;
+      }
+      try {
+        await window.setDoc(window.doc(window.collection(window.db, 'users', user.uid, 'data'), key), val);
+        console.log(`Saved ${key} to Firestore`);
+      } catch (e) {
+        console.error('Save failed:', e);
+        toast('Failed to save data: ' + e.message);
+      }
+    }
+
+    async function load(key, def) {
+      if (!user || !window.db) {
+        console.warn('Load skipped: User or db not initialized');
+        return def;
+      }
+      try {
+        const docRef = window.doc(window.db, 'users', user.uid, 'data', key);
+        const docSnap = await window.getDoc(docRef);
+        const data = docSnap.exists() ? docSnap.data() : def;
+        console.log(`Loaded ${key} from Firestore:`, data);
+        return data;
+      } catch (e) {
+        console.error('Load failed:', e);
+        toast('Failed to load data: ' + e.message);
+        return def;
+      }
+    }
+
+    function showLogin() {
+      loginModal.style.display = 'flex';
+      appEl.classList.remove('active');
+      loadingEl.style.display = 'none';
+    }
+
+    function showApp() {
+      loginModal.style.display = 'none';
+      appEl.classList.add('active');
+      loadingEl.style.display = 'none';
+    }
+
+    function initializeFirebase() {
+      if (!window.__firebaseReady) {
+        document.getElementById('authError').textContent = 'Firebase SDK failed to load. Check internet connection or Firebase config/CDN.';
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('loginModal').style.display = 'flex';
+        console.error('Firebase SDK not loaded');
+        return false;
+      }
+      console.log('Firebase SDK loaded successfully');
+      return true;
+    }
+
+    function notify(msg) {
+      if (!('Notification' in window)) return;
       if (Notification.permission === 'granted') {
-        new Notification(msg);
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') new Notification(msg);
-        });
+        try { new Notification(msg); } catch {}
       }
     }
-  }
 
-  // Export / Import
-  function exportCSV() {
-    let csv = 'Date,Subject,Completed,Hours,Notes,Priority,Mode,Pomodoros,XP\n';
-    logs.forEach(r => {
-      csv += `${r.Date},"${r.Subject}",${r.Completed},${r.Hours},"${(r.Notes || '').replaceAll('"', '\'')}",${r.Priority},${r.Mode},${r.Pomodoros || 0},${r.XP || 0}\n`;
-    });
-    download(csv, 'study_log.csv', 'text/csv');
-  }
+    function subjectsForToday() {
+      const d = cycleDay();
+      const order = taskOrder[`day${d}`] || plan[d] || [];
+      return order.length ? order : (plan[d] || []);
+    }
 
-  function exportJSON() {
-    const payload = { settings, plan, logs, syllabusProgress };
-    download(JSON.stringify(payload, null, 2), 'gateda_backup.json', 'application/json');
-  }
+    function clearCharts() { charts.forEach(c => { try { c.destroy(); } catch {} }); charts = []; }
 
-  function download(content, filename, type) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([content], { type }));
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
+    function attachCardDragHandlers(card) {
+      card.addEventListener('dragstart', () => {
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', async () => {
+        card.classList.remove('dragging');
+        const order = [...taskList.querySelectorAll('.task-card')].map(c => c._refs.subject);
+        taskOrder[`day${cycleDay()}`] = order;
+        await save(FS.taskOrder, taskOrder);
+        console.log('Task order saved:', order);
+      });
+    }
 
-  function importJSON() {
-    const i = document.createElement('input');
-    i.type = 'file';
-    i.accept = '.json';
-    i.onchange = () => {
-      const f = i.files[0];
-      const r = new FileReader();
-      r.onload = () => {
-        try {
-          const data = JSON.parse(r.result);
-          settings = Object.assign(settings, data.settings || {});
-          plan = data.plan || plan;
-          logs = data.logs || logs;
-          syllabusProgress = data.syllabusProgress || syllabusProgress;
-          save(LS.settings, settings);
-          save(LS.plan, plan);
-          save(LS.logs, logs);
-          save(LS.syllabusProgress, syllabusProgress);
-          toast('Imported successfully');
-          renderToday();
-          renderLogTable();
-          renderSyllabus();
-        } catch (e) {
-          toast('Import failed: ' + e.message);
+    function getDragAfterElement(container, y) {
+      const elements = [...container.querySelectorAll('.task-card:not(.dragging)')];
+      return elements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+          return { offset, element: child };
+        }
+        return closest;
+      }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+
+    function enableDragAndDrop() {
+      // Bind once per render
+      taskList.addEventListener('dragover', e => {
+        e.preventDefault();
+        const dragging = document.querySelector('.task-card.dragging');
+        if (!dragging) return;
+        const afterElement = getDragAfterElement(taskList, e.clientY);
+        if (afterElement == null) taskList.appendChild(dragging);
+        else taskList.insertBefore(dragging, afterElement);
+      }, { once: true });
+    }
+
+    function xpFrom(hours, completed, priority) {
+      const base = Math.round((Number(hours) || 0) * 10);
+      const bonus = completed ? 10 : 0;
+      const pr = { Low: 0, Medium: 5, High: 10 }[priority] || 0;
+      return base + bonus + pr;
+    }
+
+    function streakDays() {
+      const goal = settings.dailyGoal;
+      const byDate = {};
+      (logs || []).forEach(r => { byDate[r.Date] = (byDate[r.Date] || 0) + (r.Hours || 0); });
+      let cur = new Date();
+      let streak = 0;
+      for (let i = 0; i < 365; i++) {
+        const iso = cur.toISOString().slice(0, 10);
+        if ((byDate[iso] || 0) >= goal) {
+          streak++;
+          cur.setDate(cur.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+      return streak;
+    }
+
+    function updateKPIs() {
+      const cards = [...document.querySelectorAll('.task-card')];
+      const total = sum(cards.map(c => parseFloat(c._refs.hours.value || 0)));
+      const done = cards.filter(c => c._refs.done.checked).length;
+      document.getElementById('kToday').textContent = fmt(total) + 'h';
+      document.getElementById('kDone').textContent = String(done);
+      const pct = Math.min(100, (total / settings.dailyGoal) * 100);
+      document.getElementById('goalBar').style.width = pct + '%';
+      document.getElementById('kStreak').textContent = String(streakDays());
+      const grouped = groupBy(logs, 'Date');
+      const avgHours = logs.length ? fmt(logs.reduce((a, b) => a + (b.Hours || 0), 0) / Object.keys(grouped).length) : '0.00';
+      document.getElementById('kAvgHours').textContent = avgHours + 'h';
+    }
+
+    function currentRows() {
+      const rows = [];
+      const date = todayISO;
+      document.querySelectorAll('.task-card').forEach(c => {
+        const r = c._refs;
+        const hours = parseFloat(r.hours.value || 0);
+        const notesText = r.notes.textContent.trim();
+        if (hours > 0 || r.done.checked || notesText !== 'Notes…') {
+          rows.push({
+            Date: date,
+            Subject: r.subject,
+            Completed: r.done.checked,
+            Hours: hours,
+            Notes: notesText === 'Notes…' ? '' : notesText,
+            Priority: r.priority.value,
+            Mode: r.mode.value,
+            Pomodoros: r.state?.pomos || 0,
+            XP: xpFrom(hours, r.done.checked, r.priority.value)
+          });
+        }
+      });
+      return rows;
+    }
+
+    function renderLogTable() {
+      console.log('Rendering Log table');
+      const tb = document.getElementById('logTable');
+      if (!tb) return;
+      tb.innerHTML = '';
+      (logs || []).forEach(r => {
+        const tr = document.createElement('tr');
+        const safeNotes = (r.Notes || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        tr.innerHTML = `<td>${r.Date}</td><td>${r.Subject}</td><td>${fmt(r.Hours || 0)}</td><td>${r.Completed ? '✅' : '—'}</td><td>${r.Priority || ''}</td><td>${r.Mode || ''}</td><td>${r.Pomodoros || 0}</td><td>${safeNotes}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    function drawCharts() {
+      console.log('Drawing charts');
+      if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded; skipping charts');
+        return;
+      }
+
+      const dailyCanvas = document.getElementById('dailyChart');
+      const subjectCanvas = document.getElementById('subjectChart');
+      const completionCanvas = document.getElementById('completionChart');
+      const categoryCanvas = document.getElementById('categoryChart');
+      const last7Canvas = document.getElementById('last7Chart');
+      if (!dailyCanvas || !subjectCanvas || !completionCanvas || !categoryCanvas || !last7Canvas) {
+        // Dashboard hidden or elements missing
+        return;
+      }
+
+      clearCharts();
+      const byDate = {};
+      const bySubject = {};
+      const byCategory = {};
+      let comp = 0;
+
+      (logs || []).forEach(r => {
+        byDate[r.Date] = (byDate[r.Date] || 0) + (r.Hours || 0);
+        bySubject[r.Subject] = (bySubject[r.Subject] || 0) + (r.Hours || 0);
+        const cat = Object.keys(SYLLABUS).find(c => SYLLABUS[c].some(t => r.Subject.includes(t))) || 'Other';
+        byCategory[cat] = (byCategory[cat] || 0) + (r.Hours || 0);
+        if (r.Completed) comp++;
+      });
+
+      const dates = Object.keys(byDate).sort();
+      const hours = dates.map(d => byDate[d]);
+
+      const textColor = getComputedStyle(document.body).getPropertyValue('--text') || '#e8ebff';
+      const chartOptions = {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: textColor.trim() } },
+          y: { beginAtZero: true, ticks: { color: textColor.trim() } }
         }
       };
-      r.readAsText(f);
-    };
-    i.click();
-  }
 
-  // Buttons
-  document.getElementById('saveBtn').onclick = saveLog;
-  document.getElementById('refreshToday').onclick = () => { renderToday(); };
-  document.getElementById('clearToday').onclick = () => { sessionStorage.removeItem('todayDraft'); renderToday(); };
-  document.getElementById('nextDayBtn').onclick = () => {
-    const s = new Date(settings.startDate);
-    s.setDate(s.getDate() - 1);
-    settings.startDate = s.toISOString().slice(0, 10);
-    save(LS.settings, settings);
-    renderToday();
-    toast('Moved to next day in cycle');
-  };
+      charts.push(new Chart(dailyCanvas, {
+        type: 'line',
+        data: { labels: dates, datasets: [{ label: 'Hours', data: hours, borderColor: '#10b981' }] },
+        options: chartOptions
+      }));
 
-  document.getElementById('exportCsv').onclick = exportCSV;
-  document.getElementById('exportJson').onclick = exportJSON;
-  document.getElementById('importJson').onclick = importJSON;
-  document.getElementById('clearLogs').onclick = () => {
-    if (confirm('Clear ALL logs?')) {
-      logs = [];
-      save(LS.logs, logs);
+      charts.push(new Chart(subjectCanvas, {
+        type: 'bar',
+        data: { labels: Object.keys(bySubject), datasets: [{ label: 'Hours', data: Object.values(bySubject), backgroundColor: '#7c3aed' }] },
+        options: chartOptions
+      }));
+
+      const total = (logs || []).length;
+      charts.push(new Chart(completionCanvas, {
+        type: 'doughnut',
+        data: { labels: ['Completed', 'Pending'], datasets: [{ data: [comp, Math.max(0, total - comp)], backgroundColor: ['#10b981', '#ef4444'] }] },
+        options: {}
+      }));
+
+      charts.push(new Chart(categoryCanvas, {
+        type: 'bar',
+        data: { labels: Object.keys(byCategory), datasets: [{ label: 'Hours', data: Object.values(byCategory), backgroundColor: '#4f46e5' }] },
+        options: chartOptions
+      }));
+
+      const last7Dates = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        last7Dates.push(d.toISOString().slice(0, 10));
+      }
+      charts.push(new Chart(last7Canvas, {
+        type: 'bar',
+        data: { labels: last7Dates, datasets: [{ label: 'Hours', data: last7Dates.map(d => byDate[d] || 0), backgroundColor: '#10b981' }] },
+        options: chartOptions
+      }));
+    }
+
+    function makeTaskCard(subject) {
+      const card = document.createElement('div');
+      card.className = 'task-card';
+      card.draggable = true;
+      card.setAttribute('role', 'listitem');
+
+      const left = document.createElement('div');
+      left.innerHTML = `<div class="task-title">${subject}</div><div class="small">Max 3h/day per subject</div>`;
+
+      const controls = document.createElement('div');
+      controls.className = 'row';
+      const hours = document.createElement('input');
+      hours.type = 'number';
+      hours.min = 0;
+      hours.max = 3;
+      hours.step = 0.25;
+      hours.value = '0';
+      hours.setAttribute('aria-label', 'Hours studied');
+      hours.addEventListener('input', () => {
+        const v = parseFloat(hours.value || 0);
+        if (v < 0) hours.value = 0;
+        if (v > 3) hours.value = 3;
+        updateKPIs();
+      });
+
+      const mode = document.createElement('select');
+      ['Deep Work', 'Review', 'Practice', 'PYQs', 'Test'].forEach(m => {
+        const o = document.createElement('option');
+        o.value = m;
+        o.textContent = m;
+        mode.appendChild(o);
+      });
+      mode.setAttribute('aria-label', 'Study mode');
+
+      const priority = document.createElement('select');
+      ['Low', 'Medium', 'High'].forEach(p => {
+        const o = document.createElement('option');
+        o.value = p;
+        o.textContent = p;
+        priority.appendChild(o);
+      });
+      priority.setAttribute('aria-label', 'Priority');
+
+      const done = document.createElement('input');
+      done.type = 'checkbox';
+      done.setAttribute('aria-label', 'Task completed');
+      done.addEventListener('change', updateKPIs);
+
+      const makeBadge = (txt) => {
+        const s = document.createElement('span');
+        s.className = 'badge';
+        s.textContent = txt;
+        return s;
+      };
+      controls.append(makeBadge('Hours'), hours, makeBadge('Mode'), mode, makeBadge('Priority'), priority, makeBadge('Done'), done);
+
+      const timerBox = document.createElement('div');
+      timerBox.className = 'row';
+      const tlabel = document.createElement('span');
+      tlabel.className = 'badge';
+      tlabel.textContent = '00:00:00';
+      const startBtn = (() => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = '▶ Start'; b.setAttribute('aria-label', 'Start'); return b; })();
+      const pauseBtn = (() => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = '⏸ Pause'; b.setAttribute('aria-label', 'Pause'); return b; })();
+      const stopBtn = (() => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = '■ Stop'; b.setAttribute('aria-label', 'Stop'); return b; })();
+      const pomoChk = document.createElement('input');
+      pomoChk.type = 'checkbox';
+      pomoChk.setAttribute('aria-label', 'Enable Pomodoro');
+      const pomoLbl = document.createElement('span');
+      pomoLbl.className = 'badge';
+      pomoLbl.textContent = '🍅 0';
+      timerBox.append(tlabel, startBtn, pauseBtn, stopBtn, makeBadge('Pomodoro'), pomoChk, pomoLbl);
+
+      const notes = document.createElement('div');
+      notes.className = 'task-note';
+      notes.contentEditable = true;
+      notes.setAttribute('aria-label', 'Task notes');
+      notes.innerHTML = 'Notes…';
+      notes.addEventListener('focus', () => { if (notes.innerHTML === 'Notes…') notes.innerHTML = ''; });
+      notes.addEventListener('blur', () => { if (!notes.innerHTML.trim()) notes.innerHTML = 'Notes…'; });
+
+      const state = timers.get(subject) || { running: false, paused: false, start: 0, elapsed: 0, pomos: 0 };
+      timers.set(subject, state);
+
+      function tick() {
+        if (!state.running) return;
+        state.elapsed = Date.now() - state.start;
+        tlabel.textContent = fmtTime(state.elapsed);
+        if (pomoChk.checked) {
+          const work = settings.pomoWork * 60 * 1000;
+          const brk = settings.pomoBreak * 60 * 1000;
+          const cyc = work + brk;
+          const e = Math.floor(state.elapsed / cyc);
+          if (e > state.pomos) {
+            state.pomos = e;
+            pomoLbl.textContent = '🍅 ' + state.pomos;
+            notify(`Pomodoro complete for ${subject}`);
+          }
+        }
+        requestAnimationFrame(tick);
+      }
+
+      startBtn.addEventListener('click', () => {
+        if (state.running || state.paused) return;
+        state.running = true;
+        state.start = Date.now() - state.elapsed;
+        tick();
+        toast(`Timer started for ${subject}`);
+      });
+
+      pauseBtn.addEventListener('click', () => {
+        if (!state.running || state.paused) return;
+        state.paused = true;
+        state.running = false;
+        state.elapsed = Date.now() - state.start;
+        toast(`Timer paused for ${subject}`);
+      });
+
+      stopBtn.addEventListener('click', () => {
+        if (!state.running && !state.paused) return;
+        state.running = false;
+        state.paused = false;
+        state.elapsed = Date.now() - state.start;
+        const hrs = Math.min(3, Math.round((state.elapsed / 3600000) * 100) / 100);
+        hours.value = String(Math.max(parseFloat(hours.value || 0), hrs));
+        updateKPIs();
+        saveDraft();
+        toast(`Timer stopped for ${subject}`);
+      });
+
+      const rightA = document.createElement('div');
+      rightA.appendChild(controls);
+
+      const rightB = document.createElement('div');
+      rightB.appendChild(timerBox);
+
+      const bottom = document.createElement('div');
+      bottom.style.gridColumn = '1 / -1';
+      bottom.appendChild(notes);
+
+      // attach refs for this card
+      card._refs = {
+        subject,
+        hours,
+        mode,
+        priority,
+        done,
+        notes,
+        state
+      };
+
+      // build DOM
+      card.appendChild(left);
+      card.appendChild(rightA);
+      card.appendChild(rightB);
+      card.appendChild(bottom);
+
+      // drag handlers
+      attachCardDragHandlers(card);
+
+      return card;
+    }
+
+    function renderToday() {
+      console.log('Rendering Today section');
+      document.getElementById('cycleText').textContent = `Day ${cycleDay()} -  8-Day rotating plan`;
+      taskList.innerHTML = '';
+      timers.clear();
+      subjectsForToday().forEach(sub => taskList.appendChild(makeTaskCard(sub)));
+      updateKPIs();
+      enableDragAndDrop();
+      loadDraft();
+    }
+
+    function saveDraft() {
+      const draft = currentRows();
+      try {
+        sessionStorage.setItem('todayDraft', JSON.stringify(draft));
+        console.log('Draft saved to sessionStorage');
+      } catch (e) {
+        console.warn('Draft save failed:', e);
+      }
+    }
+
+    function loadDraft() {
+      try {
+        const d = JSON.parse(sessionStorage.getItem('todayDraft')) || [];
+        d.forEach(dr => {
+          const card = [...document.querySelectorAll('.task-card')].find(c => c._refs.subject === dr.Subject);
+          if (card && card._refs) {
+            card._refs.hours.value = dr.Hours || 0;
+            card._refs.done.checked = !!dr.Completed;
+            card._refs.mode.value = dr.Mode || 'Deep Work';
+            card._refs.priority.value = dr.Priority || 'Medium';
+            card._refs.notes.innerHTML = dr.Notes || 'Notes…';
+          }
+        });
+        updateKPIs();
+        console.log('Draft loaded from sessionStorage');
+      } catch (e) {
+        console.error('Load draft failed:', e);
+      }
+    }
+
+    async function renderSyllabus() {
+      console.log('Rendering Syllabus');
+      const box = document.getElementById('syllabusBox');
+      box.innerHTML = '';
+      Object.entries(SYLLABUS).forEach(([cat, items]) => {
+        const g = document.createElement('div');
+        g.className = 'group';
+        const h = document.createElement('h3');
+        const completed = items.filter(t => syllabusProgress[`${cat}:${t}`]).length;
+        h.innerHTML = `${cat} <span class="chip">${completed}/${items.length} completed</span>`;
+        g.appendChild(h);
+        items.forEach(t => {
+          const s = document.createElement('span');
+          s.className = 'topic';
+          const chk = document.createElement('input');
+          chk.type = 'checkbox';
+          chk.checked = !!syllabusProgress[`${cat}:${t}`];
+          chk.addEventListener('change', async () => {
+            syllabusProgress[`${cat}:${t}`] = chk.checked;
+            await save(FS.syllabusProgress, syllabusProgress);
+            renderSyllabus();
+            toast(chk.checked ? `Marked ${t} as completed` : `Unmarked ${t}`);
+          });
+          s.appendChild(chk);
+          s.append(t);
+          g.appendChild(s);
+        });
+        box.appendChild(g);
+      });
+    }
+
+    async function renderPlanEditor() {
+      console.log('Rendering Plan Editor');
+      const host = document.getElementById('planEditor');
+      host.innerHTML = '';
+      for (let d = 1; d <= 8; d++) {
+        const c = document.createElement('div');
+        c.className = 'card';
+        const h = document.createElement('h4');
+        h.textContent = 'Day ' + d;
+        c.appendChild(h);
+        const area = document.createElement('textarea');
+        area.style.width = '100%';
+        area.rows = 3;
+        area.value = (plan[d] || []).join('\n');
+        c.appendChild(area);
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn';
+        saveBtn.textContent = 'Save Day ' + d;
+        saveBtn.addEventListener('click', async () => {
+          plan[d] = area.value.split('\n').map(x => x.trim()).filter(Boolean);
+          await save(FS.plan, plan);
+          toast('Saved Day ' + d);
+          renderToday();
+        });
+        c.appendChild(saveBtn);
+        host.appendChild(c);
+      }
+    }
+
+    async function saveLog() {
+      console.log('Save Log button clicked');
+      if (!user || !window.db) {
+        toast('Please log in to save');
+        console.error('Save Log failed: User or db not initialized');
+        return;
+      }
+      const rows = currentRows();
+      if (!rows.length) {
+        toast('No data to save');
+        console.warn('Save Log failed: No data to save');
+        return;
+      }
+      logs.push(...rows);
+      await save(FS.logs, logs);
+      settings.xp = (settings.xp || 0) + rows.reduce((a, b) => a + (b.XP || 0), 0);
+      const totalHours = logs.reduce((a, b) => a + (b.Hours || 0), 0);
+      const badges = new Set(settings.badges || []);
+      [[10, 'Rookie'], [50, 'Committed'], [100, 'Centurion'], [200, 'Marathoner']].forEach(([h, name]) => {
+        if (totalHours >= h) badges.add(name);
+      });
+      settings.badges = [...badges];
+      await save(FS.settings, settings);
+      notify('Log saved!');
+      toast('Log saved');
       renderLogTable();
-      drawCharts();
-      toast('Logs cleared');
+      updateKPIs();
+      try { sessionStorage.removeItem('todayDraft'); } catch {}
     }
-  };
 
-  document.getElementById('saveSettings').onclick = () => {
-    const dailyGoal = parseFloat(document.getElementById('dailyGoal').value) || settings.dailyGoal;
-    const pomoWork = parseInt(document.getElementById('pomoWork').value) || settings.pomoWork;
-    const pomoBreak = parseInt(document.getElementById('pomoBreak').value) || settings.pomoBreak;
-    if (dailyGoal < 0 || pomoWork < 1 || pomoBreak < 1) {
-      toast('Invalid settings values');
-      return;
+    function drawIfDashboardActive(tabId) {
+      if (tabId === 'dashboard') drawCharts();
+      if (tabId === 'log') renderLogTable();
+      if (tabId === 'syllabus') renderSyllabus();
+      if (tabId === 'settings') renderPlanEditor();
     }
-    settings.dailyGoal = dailyGoal;
-    settings.pomoWork = pomoWork;
-    settings.pomoBreak = pomoBreak;
-    save(LS.settings, settings);
-    document.getElementById('kGoal').textContent = settings.dailyGoal + 'h';
-    toast('Settings saved');
-  };
-  document.getElementById('resetPlan').onclick = () => {
-    if (confirm('Reset plan to defaults?')) {
-      plan = JSON.parse(JSON.stringify(DEFAULT_PLAN));
-      save(LS.plan, plan);
-      renderPlanEditor();
-      renderToday();
-      toast('Plan reset');
-    }
-  };
 
-  // Keyboard shortcut Ctrl+S
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      saveLog();
-    }
-  });
+    // -----------------------
+    // App Boot
+    // -----------------------
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM loaded, initializing Firebase...');
+      if (!initializeFirebase()) {
+        showLogin();
+        return;
+      }
 
-  // Initial render
-  renderToday();
-  renderSyllabus();
-  renderPlanEditor();
-  renderLogTable();
-  drawCharts();
+      // Optional: request notification permission once
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(()=>{});
+      }
+
+      // Auth state listener
+      window.onAuthStateChanged(window.auth, async u => {
+        console.log('Auth state changed:', u ? `User: ${u.email}` : 'No user');
+        if (u) {
+          user = u;
+          document.getElementById('userChip').textContent = `👤 ${u.email}`;
+          try {
+            settings = await load(FS.settings, settings) || settings;
+            plan = await load(FS.plan, DEFAULT_PLAN) || DEFAULT_PLAN;
+            logs = (await load(FS.logs, [])) || [];
+            logs = logs.map(log => ({ ...log, Date: log.Date || todayISO }));
+            syllabusProgress = await load(FS.syllabusProgress, {}) || {};
+            taskOrder = await load(FS.taskOrder, {}) || {};
+            appEl.dataset.theme = settings.theme || 'dark';
+            document.getElementById('todayChip').textContent = '📅 ' + todayISO;
+            document.getElementById('kGoal').textContent = (settings.dailyGoal || 6) + 'h';
+            document.getElementById('dailyGoal').value = settings.dailyGoal || 6;
+            document.getElementById('pomoWork').value = settings.pomoWork || 25;
+            document.getElementById('pomoBreak').value = settings.pomoBreak || 5;
+            renderToday();
+            renderSyllabus();
+            renderPlanEditor();
+            renderLogTable();
+            drawCharts();
+            showApp();
+            console.log('App initialized for user');
+          } catch (e) {
+            console.error('Failed to load user data:', e);
+            toast('Error loading data: ' + e.message);
+            showLogin();
+          }
+        } else {
+          user = null;
+          showLogin();
+        }
+      });
+
+      // Tabs
+      document.querySelectorAll('.tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-selected', 'false');
+          });
+          btn.classList.add('active');
+          btn.setAttribute('aria-selected', 'true');
+          const id = btn.dataset.tab;
+          ['today', 'syllabus', 'log', 'dashboard', 'settings'].forEach(x => {
+            document.getElementById(x).style.display = x === id ? 'block' : 'none';
+          });
+          drawIfDashboardActive(id);
+        });
+      });
+
+      // Theme toggle
+      document.getElementById('themeToggle').addEventListener('click', async () => {
+        settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+        appEl.dataset.theme = settings.theme;
+        await save(FS.settings, settings);
+        toast('Theme switched');
+      });
+
+      // Focus toggle
+      document.getElementById('focusToggle').addEventListener('click', () => {
+        focus = !focus;
+        document.body.style.filter = focus ? 'saturate(1.05)' : 'none';
+        document.querySelector('nav').style.display = focus ? 'none' : 'flex';
+        toast(focus ? 'Focus ON — distractions hidden' : 'Focus OFF');
+      });
+
+      // Auth buttons
+      document.getElementById('loginBtn').addEventListener('click', async () => {
+        if (!window.auth) {
+          authError.textContent = 'Firebase not initialized';
+          toast('Firebase not initialized');
+          return;
+        }
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        if (!email || !password) {
+          authError.textContent = 'Please enter email and password';
+          toast('Please enter email and password');
+          return;
+        }
+        try {
+          await window.signInWithEmailAndPassword(window.auth, email, password);
+          toast('Logged in successfully');
+        } catch (e) {
+          authError.textContent = e.message;
+          toast('Login failed: ' + e.message);
+          console.error('Login failed:', e);
+        }
+      });
+
+      document.getElementById('signupBtn').addEventListener('click', async () => {
+        if (!window.auth) {
+          authError.textContent = 'Firebase not initialized';
+          toast('Firebase not initialized');
+          return;
+        }
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        if (!email || !password) {
+          authError.textContent = 'Please enter email and password';
+          toast('Please enter email and password');
+          return;
+        }
+        try {
+          await window.createUserWithEmailAndPassword(window.auth, email, password);
+          toast('Signed up successfully');
+        } catch (e) {
+          authError.textContent = e.message;
+          toast('Sign Up failed: ' + e.message);
+          console.error('Sign Up failed:', e);
+        }
+      });
+
+      document.getElementById('googleBtn').addEventListener('click', async () => {
+        if (!window.auth) {
+          authError.textContent = 'Firebase not initialized';
+          toast('Firebase not initialized');
+          return;
+        }
+        try {
+          const provider = new window.GoogleAuthProvider();
+          await window.signInWithPopup(window.auth, provider);
+          toast('Signed in with Google');
+        } catch (e) {
+          authError.textContent = e.message;
+          toast('Google Sign-In failed: ' + e.message);
+          console.error('Google Sign-In failed:', e);
+        }
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        if (!window.auth) {
+          toast('Firebase not initialized');
+          return;
+        }
+        try {
+          await window.signOut(window.auth);
+          toast('Logged out');
+        } catch (e) {
+          toast('Logout failed: ' + e.message);
+          console.error('Logout failed:', e);
+        }
+      });
+
+      // Today controls
+      document.getElementById('saveBtn').addEventListener('click', saveLog);
+      document.getElementById('refreshToday').addEventListener('click', () => {
+        renderToday();
+      });
+      document.getElementById('clearToday').addEventListener('click', () => {
+        try { sessionStorage.removeItem('todayDraft'); } catch {}
+        renderToday();
+      });
+      document.getElementById('nextDayBtn').addEventListener('click', async () => {
+        const s = new Date(settings.startDate);
+        s.setDate(s.getDate() - 1); // advance cycle forward by 1 day
+        settings.startDate = s.toISOString().slice(0, 10);
+        await save(FS.settings, settings);
+        renderToday();
+        toast('Moved to next day in cycle');
+      });
+
+      // Logs
+      document.getElementById('exportCsv').addEventListener('click', () => {
+        let csv = 'Date,Subject,Completed,Hours,Notes,Priority,Mode,Pomodoros,XP\n';
+        (logs || []).forEach(r => {
+          const safeNotes = String(r.Notes || '').replaceAll('"', '\'');
+          csv += `${r.Date},"${r.Subject}",${r.Completed},${r.Hours},"${safeNotes}",${r.Priority},${r.Mode},${r.Pomodoros || 0},${r.XP || 0}\n`;
+        });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+        a.download = 'study_log.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      document.getElementById('exportJson').addEventListener('click', () => {
+        const payload = { settings, plan, logs, syllabusProgress, taskOrder };
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+        a.download = 'gateda_backup.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      document.getElementById('importJson').addEventListener('click', async () => {
+        if (!user || !window.db) {
+          toast('Please log in to import');
+          return;
+        }
+        const i = document.createElement('input');
+        i.type = 'file';
+        i.accept = '.json';
+        i.onchange = async () => {
+          const f = i.files;
+          const r = new FileReader();
+          r.onload = async () => {
+            try {
+              const data = JSON.parse(r.result);
+              settings = Object.assign(settings, data.settings || {});
+              plan = data.plan || plan;
+              logs = data.logs || logs;
+              syllabusProgress = data.syllabusProgress || syllabusProgress;
+              taskOrder = data.taskOrder || taskOrder;
+              await save(FS.settings, settings);
+              await save(FS.plan, plan);
+              await save(FS.logs, logs);
+              await save(FS.syllabusProgress, syllabusProgress);
+              await save(FS.taskOrder, taskOrder);
+              toast('Imported successfully');
+              renderToday();
+              renderLogTable();
+              renderSyllabus();
+              drawCharts();
+              console.log('JSON imported successfully');
+            } catch (e) {
+              console.error('Import failed:', e);
+              toast('Import failed: ' + e.message);
+            }
+          };
+          r.readAsText(f);
+        };
+        i.click();
+      });
+
+      document.getElementById('clearLogs').addEventListener('click', async () => {
+        if (confirm('Clear ALL logs?')) {
+          logs = [];
+          await save(FS.logs, logs);
+          renderLogTable();
+          drawCharts();
+          toast('Logs cleared');
+        }
+      });
+
+      document.getElementById('saveSettings').addEventListener('click', async () => {
+        const dailyGoal = parseFloat(document.getElementById('dailyGoal').value) || settings.dailyGoal;
+        const pomoWork = parseInt(document.getElementById('pomoWork').value) || settings.pomoWork;
+        const pomoBreak = parseInt(document.getElementById('pomoBreak').value) || settings.pomoBreak;
+        if (dailyGoal < 0 || pomoWork < 1 || pomoBreak < 1) {
+          toast('Invalid settings values');
+          return;
+        }
+        settings.dailyGoal = dailyGoal;
+        settings.pomoWork = pomoWork;
+        settings.pomoBreak = pomoBreak;
+        await save(FS.settings, settings);
+        document.getElementById('kGoal').textContent = settings.dailyGoal + 'h';
+        toast('Settings saved');
+      });
+
+      document.getElementById('resetPlan').addEventListener('click', async () => {
+        if (confirm('Reset plan to defaults?')) {
+          plan = JSON.parse(JSON.stringify(DEFAULT_PLAN));
+          await save(FS.plan, plan);
+          renderPlanEditor();
+          renderToday();
+          toast('Plan reset');
+        }
+      });
+
+      document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          saveLog();
+        }
+      });
+    });
   </script>
 </body>
 </html>
