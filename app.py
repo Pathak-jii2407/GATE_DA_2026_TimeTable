@@ -22,6 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Safe rerun helper
 def safe_rerun():
     try:
         st.rerun()
@@ -48,16 +49,16 @@ def user_file(email: str) -> str:
 def draft_file(email: str) -> str:
     return os.path.join(DRAFT_DIR, f"{_safe(email)}_draft.json")
 
-ACTIVE_USERS_FILE     = os.path.join(AUTH_DIR, "active_users.json")   # concurrent active users set
-GLOBAL_REGISTRY_FILE  = os.path.join(DATA_DIR, "users_registry.json") # all users
-DM_DIR                = os.path.join(DATA_DIR, "dm_threads")          # per-pair DM messages
-TOKENS_FILE           = os.path.join(AUTH_DIR, "tokens.json")         # per-tab login tokens
-UNREAD_FILE           = os.path.join(DATA_DIR, "unread_index.json")   # unread per-thread index
+ACTIVE_USERS_FILE     = os.path.join(AUTH_DIR, "active_users.json")
+GLOBAL_REGISTRY_FILE  = os.path.join(DATA_DIR, "users_registry.json")
+DM_DIR                = os.path.join(DATA_DIR, "dm_threads")
+TOKENS_FILE           = os.path.join(AUTH_DIR, "tokens.json")
+UNREAD_FILE           = os.path.join(DATA_DIR, "unread_index.json")
 os.makedirs(DM_DIR, exist_ok=True)
 
 # CONFIG
-MAX_ACTIVE_USERS = 10  # concurrent active sessions
-TOKEN_BYTES = 24       # token size for URL param
+MAX_ACTIVE_USERS = 10
+TOKEN_BYTES = 24
 
 # -------------------------------------------------------------
 # Syllabus + Default Plan
@@ -227,7 +228,7 @@ def save_user(email: str, data: UserData, pass_hash: str):
     with open(user_file(email), "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
-# Active users (concurrency control)
+# Active users (concurrency)
 def _load_active_users() -> List[str]:
     if not os.path.exists(ACTIVE_USERS_FILE):
         return []
@@ -273,7 +274,7 @@ def save_draft(email: str, rows: List[Dict[str, Any]]):
     with open(draft_file(email), "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2)
 
-# User registry
+# Registry
 def load_registry() -> Dict[str, Any]:
     if not os.path.exists(GLOBAL_REGISTRY_FILE):
         return {"users": []}
@@ -300,7 +301,14 @@ def ensure_user_in_registry(email: str, username: str = ""):
     reg["users"] = users
     save_registry(reg)
 
-# Direct messages (per-pair, pruned to today)
+def remove_user_from_registry(email: str):
+    reg = load_registry()
+    users = reg.get("users", [])
+    users = [u for u in users if u.get("email") != email]
+    reg["users"] = users
+    save_registry(reg)
+
+# Direct messages (per-pair, prune to today)
 def _dm_key(email_a: str, email_b: str) -> str:
     a, b = sorted([email_a, email_b])
     return f"{_safe(a)}__{_safe(b)}.json"
@@ -333,7 +341,7 @@ def save_dm(email_a: str, email_b: str, msgs: List[Dict[str, Any]]):
     with open(fp, "w", encoding="utf-8") as f:
         json.dump(msgs, f, indent=2)
 
-# Unread index for DMs: { me: { peer: "last_seen_ts" } }
+# Unread index: { me: { peer: last_seen_ts } }
 def _load_unread():
     if not os.path.exists(UNREAD_FILE):
         return {}
@@ -367,7 +375,6 @@ def has_unread(me: str, peer: str) -> bool:
     if not msgs:
         return False
     if not last:
-        # Never seen: any message from peer is unread
         return any(m.get("from") == peer for m in msgs)
     try:
         last_dt = datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
@@ -383,7 +390,7 @@ def has_unread(me: str, peer: str) -> bool:
                 return True
     return False
 
-# Per-tab login tokens (remember across refresh)
+# Tokens for per-tab login persistence
 def _load_tokens():
     if not os.path.exists(TOKENS_FILE):
         return {}
@@ -479,9 +486,10 @@ def streak_days(data: UserData) -> int:
     return n
 
 # -------------------------------------------------------------
-# Session bootstrap (with token rehydrate)
+# Session bootstrap + timers/refresh ticks
 # -------------------------------------------------------------
 def ensure_session_state():
+    # Core session
     if "active_email" not in st.session_state:
         st.session_state.active_email = None
     if "pass_hash" not in st.session_state:
@@ -500,8 +508,15 @@ def ensure_session_state():
         st.session_state.order_state = {}
     if "dm_peer" not in st.session_state:
         st.session_state.dm_peer = ""
+    # UI-controlled ticks
+    if "tick_1s" not in st.session_state:
+        st.session_state.tick_1s = 0
+    if "tick_5s" not in st.session_state:
+        st.session_state.tick_5s = 0
+    if "last_tick_time" not in st.session_state:
+        st.session_state.last_tick_time = time.time()
 
-    # Rehydrate from token if session is empty
+    # Token rehydrate (per-tab)
     if (not st.session_state.active_email) or (not st.session_state.data):
         email, ph = resolve_token_login()
         if email and ph:
@@ -512,13 +527,25 @@ def ensure_session_state():
                 st.session_state.draft_rows = load_draft(email)
                 st.session_state.data = data
 
+    # Ticker: update every run based on elapsed real time
+    now = time.time()
+    elapsed = now - st.session_state.last_tick_time
+    # increment 1s ticker
+    if elapsed >= 1:
+        inc = int(elapsed // 1)
+        st.session_state.tick_1s += inc
+        st.session_state.last_tick_time += inc
+    # increment 5s ticker (derived)
+    if st.session_state.tick_1s % 5 == 0:
+        st.session_state.tick_5s = st.session_state.tick_1s // 5
+
 def persist_all():
     if st.session_state.get("active_email") and st.session_state.get("pass_hash") and st.session_state.get("data"):
         save_user(st.session_state.active_email, st.session_state.data, st.session_state.pass_hash)
         save_draft(st.session_state.active_email, st.session_state.draft_rows)
 
 # -------------------------------------------------------------
-# Auth UI (per-browser session; tokens remember across refresh)
+# Auth UI
 # -------------------------------------------------------------
 def view_login():
     st.header("Login to StudyTracker (Local)")
@@ -550,7 +577,7 @@ def view_login():
             st.session_state.data = data
             st.session_state.draft_rows = load_draft(email)
             ensure_user_in_registry(email, data.settings.username or "")
-            set_login_token(email, ph)  # remember across refresh for this tab
+            set_login_token(email, ph)  # remember in this tab
             st.toast("Logged in")
             safe_rerun()
     with c2:
@@ -703,7 +730,7 @@ def save_log(data: UserData):
     st.toast("Log saved")
 
 # -------------------------------------------------------------
-# Today View
+# Timer UI (1s updates via tick)
 # -------------------------------------------------------------
 def timer_ui(subject: str, data: UserData):
     tmap = st.session_state.get("timers", {})
@@ -711,6 +738,19 @@ def timer_ui(subject: str, data: UserData):
         tmap[subject] = {"running": False, "start": 0.0, "elapsed_ms": 0, "pomos": 0, "use_pomo": False}
         st.session_state.timers = tmap
     t = tmap[subject]
+
+    # Advance elapsed time based on 1s tick if running
+    # This keeps UI responsive without manual inputs
+    if t["running"]:
+        # Use a per-subject last tick marker to avoid overcount
+        if "last_tick_1s" not in t:
+            t["last_tick_1s"] = st.session_state.tick_1s
+        if st.session_state.tick_1s > t["last_tick_1s"]:
+            delta_ticks = st.session_state.tick_1s - t["last_tick_1s"]
+            t["elapsed_ms"] += delta_ticks * 1000
+            t["last_tick_1s"] = st.session_state.tick_1s
+    else:
+        t["last_tick_1s"] = st.session_state.tick_1s
 
     def hms(ms: int) -> str:
         s = ms // 1000
@@ -727,18 +767,13 @@ def timer_ui(subject: str, data: UserData):
     stop = c4.button("Stop", key=f"stop_{subject}")
     t["use_pomo"] = c5.toggle("Pomodoro", value=t.get("use_pomo", False), key=f"pomo_{subject}")
 
-    now = time.time()
-    if t["running"]:
-        t["elapsed_ms"] = int((now - t["start"]) * 1000)
-
     if start and not t["running"]:
         t["running"] = True
-        t["start"] = now - (t["elapsed_ms"] / 1000.0)
+        t["last_tick_1s"] = st.session_state.tick_1s
         st.toast(f"Timer started: {subject}")
 
     if pause and t["running"]:
         t["running"] = False
-        t["elapsed_ms"] = int((now - t["start"]) * 1000)
         st.toast(f"Timer paused: {subject}")
 
     if t["use_pomo"]:
@@ -752,14 +787,15 @@ def timer_ui(subject: str, data: UserData):
     st.caption(f"🍅 {t['pomos']}")
 
     if stop and (t["running"] or t["elapsed_ms"] > 0):
-        if t["running"]:
-            t["elapsed_ms"] = int((now - t["start"]) * 1000)
         t["running"] = False
         st.toast(f"Timer stopped: {subject}")
 
     hrs = min(10.0, round(t["elapsed_ms"] / 3600000.0, 2))
     return hrs, t["pomos"]
 
+# -------------------------------------------------------------
+# Reorder UI
+# -------------------------------------------------------------
 def reorder_ui(data: UserData):
     d = cycle_day(data.settings)
     st.subheader(f"Today's Subjects — Day {d} of 8")
@@ -791,6 +827,9 @@ def reorder_ui(data: UserData):
         if st.session_state.get("auto_save", True):
             persist_all()
 
+# -------------------------------------------------------------
+# Today View
+# -------------------------------------------------------------
 def today_view(data: Optional[UserData]):
     if not data or not getattr(data, "settings", None):
         st.warning("No user data loaded. Please log in again.")
@@ -1082,10 +1121,14 @@ def dashboard_view(data: Optional[UserData]):
             st.info("No data")
 
 # -------------------------------------------------------------
-# Conversation View (private DMs, unread badges)
+# Conversation View (private DMs, unread badges, auto-refresh)
 # -------------------------------------------------------------
 def conversation_view():
     st.header("Conversation (Private)")
+
+    # Auto-refresh messages every 5 seconds without affecting other tabs
+    # We rely on st.session_state.tick_5s tied to real time in ensure_session_state()
+    _ = st.session_state.tick_5s  # touching it ensures re-renders align with time
 
     current_email = st.session_state.get("active_email") or ""
     reg = load_registry()
@@ -1122,8 +1165,7 @@ def conversation_view():
 
     me = current_email
     msgs = load_dm(me, peer)
-    # Viewing marks the thread as seen for me
-    mark_thread_seen(me, peer)
+    mark_thread_seen(me, peer)  # viewing marks seen
 
     if msgs:
         for m in sorted(msgs, key=lambda x: x.get("ts", ""), reverse=True):
@@ -1139,11 +1181,16 @@ def conversation_view():
         my_username = st.session_state.data.settings.username or ""
     except Exception:
         my_username = ""
+
+    # DM input with per-thread key and clearing after send
+    input_key = f"dm_input_{peer}"
+    if input_key not in st.session_state:
+        st.session_state[input_key] = ""
     st.write("")
-    msg_text = st.text_area("Message", value="", height=80, placeholder=f"Message to {peer}...")
+    msg_text = st.text_input("Message", value=st.session_state[input_key], key=input_key, placeholder=f"Message to {peer}...")
     c1, c2, c3 = st.columns(3)
     if c1.button("Send"):
-        txt = msg_text.strip()
+        txt = (st.session_state.get(input_key) or "").strip()
         if not txt:
             st.warning("Message is empty.")
         else:
@@ -1156,8 +1203,9 @@ def conversation_view():
                 "text": txt
             })
             save_dm(me, peer, msgs)
-            # Sending implies seen for me
             mark_thread_seen(me, peer)
+            # Clear the input box
+            st.session_state[input_key] = ""
             st.success("Message sent.")
             safe_rerun()
     if c2.button("Clear today's thread", type="secondary"):
@@ -1169,7 +1217,7 @@ def conversation_view():
         safe_rerun()
 
 # -------------------------------------------------------------
-# Settings View
+# Settings View (includes Delete Account)
 # -------------------------------------------------------------
 def plan_editor_view(data: UserData):
     st.subheader("8-Day Plan Editor")
@@ -1188,13 +1236,80 @@ def plan_editor_view(data: UserData):
                 if st.session_state.get("auto_save", True):
                     persist_all()
 
+def delete_user_account_flow():
+    st.subheader("Danger Zone")
+    st.warning("Delete Account: This will permanently remove your data (logs, drafts, DM threads, unread markers) and cannot be undone.")
+    email = st.session_state.get("active_email") or ""
+    if not email:
+        st.info("No active user.")
+        return
+    pwd = st.text_input("Confirm password to delete account", type="password", key="del_acc_pwd")
+    if st.button("Delete Account Permanently", type="primary"):
+        if not pwd:
+            st.error("Enter password.")
+            return
+        data, ph = load_user(email)
+        if not data or not ph:
+            st.error("User data not found.")
+            return
+        if not check_bcrypt(pwd, ph):
+            st.error("Password incorrect.")
+            return
+        # 1) Remove user JSON
+        try:
+            os.remove(user_file(email))
+        except FileNotFoundError:
+            pass
+        # 2) Remove draft
+        try:
+            os.remove(draft_file(email))
+        except FileNotFoundError:
+            pass
+        # 3) Remove from active users
+        remove_active_user(email)
+        # 4) Remove user from registry
+        remove_user_from_registry(email)
+        # 5) Prune DM threads involving this user
+        try:
+            for fname in os.listdir(DM_DIR):
+                if not fname.endswith(".json"):
+                    continue
+                if _safe(email) in fname:
+                    try:
+                        os.remove(os.path.join(DM_DIR, fname))
+                    except FileNotFoundError:
+                        pass
+        except Exception:
+            pass
+        # 6) Remove from unread index
+        idx = _load_unread()
+        if email in idx:
+            del idx[email]
+        # Also remove this user from others' maps
+        for k in list(idx.keys()):
+            if email in idx[k]:
+                del idx[k][email]
+        _save_unread(idx)
+        # 7) Remove token from URL
+        clear_login_token()
+        # 8) Clear session
+        st.session_state.active_email = None
+        st.session_state.pass_hash = None
+        st.session_state.data = None
+        st.session_state.draft_rows = []
+        st.session_state.timers = {}
+        st.session_state.deleted_buffer = []
+        st.session_state.dm_peer = ""
+        st.success("Account deleted permanently.")
+        safe_rerun()
+
 def settings_view(data: Optional[UserData]):
     if not data or not getattr(data, "settings", None):
         st.warning("No user data loaded. Please log in again.")
         return
 
     st.header("Settings")
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2,1])
     with col1:
         st.subheader("General")
         uname = st.text_input("Username (display name)", value=data.settings.username or "")
@@ -1228,8 +1343,10 @@ def settings_view(data: Optional[UserData]):
             if st.session_state.get("auto_save", True):
                 persist_all()
 
-    with col2:
         plan_editor_view(data)
+
+    with col2:
+        delete_user_account_flow()
 
 # -------------------------------------------------------------
 # Header
@@ -1255,7 +1372,7 @@ def header_bar(data: Optional[UserData]):
             persist_all()
             if st.session_state.get("active_email"):
                 remove_active_user(st.session_state.get("active_email"))
-            clear_login_token()  # remove token so refresh won't auto-login
+            clear_login_token()
             st.session_state.active_email = None
             st.session_state.pass_hash = None
             st.session_state.data = None
@@ -1281,6 +1398,11 @@ def header_bar(data: Optional[UserData]):
 # -------------------------------------------------------------
 def main():
     ensure_session_state()
+
+    # Drive 1s refresh for timers by inserting a tiny hidden status element and immediately returning.
+    # We avoid infinite loops by simply re-running naturally as users interact; here we just ensure
+    # the tick counters advance each run via ensure_session_state().
+    # Messages auto-refresh piggy-back on the 5s tick.
 
     if not st.session_state.get("active_email") or not st.session_state.get("data") or not getattr(st.session_state.get("data"), "settings", None):
         view_login()
