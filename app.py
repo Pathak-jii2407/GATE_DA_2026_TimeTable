@@ -50,11 +50,14 @@ def draft_file(email: str) -> str:
 
 ACTIVE_USERS_FILE     = os.path.join(AUTH_DIR, "active_users.json")   # concurrent active users set
 GLOBAL_REGISTRY_FILE  = os.path.join(DATA_DIR, "users_registry.json") # all users
-DM_DIR                = os.path.join(DATA_DIR, "dm_threads")          # per-pair direct messages
+DM_DIR                = os.path.join(DATA_DIR, "dm_threads")          # per-pair DM messages
+TOKENS_FILE           = os.path.join(AUTH_DIR, "tokens.json")         # per-tab login tokens
+UNREAD_FILE           = os.path.join(DATA_DIR, "unread_index.json")   # unread per-thread index
 os.makedirs(DM_DIR, exist_ok=True)
 
-# CONFIG: max concurrent active sessions (you and friends)
-MAX_ACTIVE_USERS = 10
+# CONFIG
+MAX_ACTIVE_USERS = 10  # concurrent active sessions
+TOKEN_BYTES = 24       # token size for URL param
 
 # -------------------------------------------------------------
 # Syllabus + Default Plan
@@ -159,7 +162,7 @@ class UserData:
     dayChats: Dict[str, str] = field(default_factory=dict)  # per-day note/message
 
 # -------------------------------------------------------------
-# Auth & global helpers (concurrent, per-session)
+# Auth & global helpers
 # -------------------------------------------------------------
 def sha_bcrypt(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -224,6 +227,7 @@ def save_user(email: str, data: UserData, pass_hash: str):
     with open(user_file(email), "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
+# Active users (concurrency control)
 def _load_active_users() -> List[str]:
     if not os.path.exists(ACTIVE_USERS_FILE):
         return []
@@ -254,6 +258,7 @@ def remove_active_user(email: str):
         arr.remove(email)
         _save_active_users(arr)
 
+# Drafts
 def load_draft(email: str) -> List[Dict[str, Any]]:
     fp = draft_file(email)
     if not os.path.exists(fp):
@@ -268,6 +273,7 @@ def save_draft(email: str, rows: List[Dict[str, Any]]):
     with open(draft_file(email), "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2)
 
+# User registry
 def load_registry() -> Dict[str, Any]:
     if not os.path.exists(GLOBAL_REGISTRY_FILE):
         return {"users": []}
@@ -294,7 +300,7 @@ def ensure_user_in_registry(email: str, username: str = ""):
     reg["users"] = users
     save_registry(reg)
 
-# Direct messages (per-pair, auto-pruned to today's only)
+# Direct messages (per-pair, pruned to today)
 def _dm_key(email_a: str, email_b: str) -> str:
     a, b = sorted([email_a, email_b])
     return f"{_safe(a)}__{_safe(b)}.json"
@@ -326,6 +332,101 @@ def save_dm(email_a: str, email_b: str, msgs: List[Dict[str, Any]]):
     fp = _dm_file(email_a, email_b)
     with open(fp, "w", encoding="utf-8") as f:
         json.dump(msgs, f, indent=2)
+
+# Unread index for DMs: { me: { peer: "last_seen_ts" } }
+def _load_unread():
+    if not os.path.exists(UNREAD_FILE):
+        return {}
+    try:
+        with open(UNREAD_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_unread(d: dict):
+    with open(UNREAD_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2)
+
+def mark_thread_seen(me: str, peer: str):
+    if not me or not peer:
+        return
+    idx = _load_unread()
+    user_map = idx.get(me, {})
+    user_map[peer] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    idx[me] = user_map
+    _save_unread(idx)
+
+def has_unread(me: str, peer: str) -> bool:
+    if not me or not peer:
+        return False
+    last = None
+    idx = _load_unread()
+    if me in idx and peer in idx[me]:
+        last = idx[me][peer]
+    msgs = load_dm(me, peer)
+    if not msgs:
+        return False
+    if not last:
+        # Never seen: any message from peer is unread
+        return any(m.get("from") == peer for m in msgs)
+    try:
+        last_dt = datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        last_dt = datetime.min
+    for m in msgs:
+        if m.get("from") == peer:
+            try:
+                ts_dt = datetime.strptime(m.get("ts", ""), "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                continue
+            if ts_dt > last_dt:
+                return True
+    return False
+
+# Per-tab login tokens (remember across refresh)
+def _load_tokens():
+    if not os.path.exists(TOKENS_FILE):
+        return {}
+    try:
+        with open(TOKENS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_tokens(d: dict):
+    with open(TOKENS_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2)
+
+def _gen_token(n=TOKEN_BYTES):
+    import secrets
+    return secrets.token_urlsafe(n)
+
+def set_login_token(email: str, pass_hash: str):
+    token = _gen_token()
+    db = _load_tokens()
+    db[token] = {"email": email, "passHash": pass_hash, "ts": datetime.now().isoformat()}
+    _save_tokens(db)
+    qp = st.query_params
+    qp["token"] = token
+    st.query_params = qp
+    return token
+
+def clear_login_token():
+    qp = st.query_params
+    if "token" in qp:
+        del qp["token"]
+        st.query_params = qp
+
+def resolve_token_login():
+    qp = st.query_params
+    token = qp.get("token")
+    if not token:
+        return None, None
+    db = _load_tokens()
+    row = db.get(token)
+    if not row:
+        return None, None
+    return row.get("email"), row.get("passHash")
 
 # -------------------------------------------------------------
 # Time & plan helpers
@@ -378,7 +479,7 @@ def streak_days(data: UserData) -> int:
     return n
 
 # -------------------------------------------------------------
-# Session bootstrap (no global session file)
+# Session bootstrap (with token rehydrate)
 # -------------------------------------------------------------
 def ensure_session_state():
     if "active_email" not in st.session_state:
@@ -400,13 +501,24 @@ def ensure_session_state():
     if "dm_peer" not in st.session_state:
         st.session_state.dm_peer = ""
 
+    # Rehydrate from token if session is empty
+    if (not st.session_state.active_email) or (not st.session_state.data):
+        email, ph = resolve_token_login()
+        if email and ph:
+            data, onfile_ph = load_user(email)
+            if data and onfile_ph == ph:
+                st.session_state.active_email = email
+                st.session_state.pass_hash = ph
+                st.session_state.draft_rows = load_draft(email)
+                st.session_state.data = data
+
 def persist_all():
     if st.session_state.get("active_email") and st.session_state.get("pass_hash") and st.session_state.get("data"):
         save_user(st.session_state.active_email, st.session_state.data, st.session_state.pass_hash)
         save_draft(st.session_state.active_email, st.session_state.draft_rows)
 
 # -------------------------------------------------------------
-# Auth UI (no global remember; purely per-browser session)
+# Auth UI (per-browser session; tokens remember across refresh)
 # -------------------------------------------------------------
 def view_login():
     st.header("Login to StudyTracker (Local)")
@@ -438,6 +550,7 @@ def view_login():
             st.session_state.data = data
             st.session_state.draft_rows = load_draft(email)
             ensure_user_in_registry(email, data.settings.username or "")
+            set_login_token(email, ph)  # remember across refresh for this tab
             st.toast("Logged in")
             safe_rerun()
     with c2:
@@ -464,6 +577,7 @@ def view_login():
             st.session_state.data = data
             st.session_state.draft_rows = []
             ensure_user_in_registry(email, "")
+            set_login_token(email, phash)
             st.toast("Signed up")
             safe_rerun()
 
@@ -968,7 +1082,7 @@ def dashboard_view(data: Optional[UserData]):
             st.info("No data")
 
 # -------------------------------------------------------------
-# Conversation View (private DMs, up to MAX_ACTIVE_USERS active)
+# Conversation View (private DMs, unread badges)
 # -------------------------------------------------------------
 def conversation_view():
     st.header("Conversation (Private)")
@@ -985,13 +1099,16 @@ def conversation_view():
             peer_email = u.get("email") or ""
             peer_name = (u.get("username") or peer_email).strip()
             avg_all, avg_7 = compute_user_avgs(peer_email)
+
+            new_badge = " NEW" if current_email and peer_email and peer_email != current_email and has_unread(current_email, peer_email) else ""
             cols = st.columns([5,2,2,1.5])
-            cols[0].markdown(f"{peer_name} ({peer_email})")
+            cols[0].markdown(f"{peer_name} ({peer_email}){new_badge}")
             cols[1].markdown(f"Avg(all): {avg_all:.2f}h")
             cols[2].markdown(f"Avg(7d): {avg_7:.2f}h")
             if peer_email and peer_email != current_email:
                 if cols[3].button("Chat", key=f"chat_{peer_email}"):
                     st.session_state.dm_peer = peer_email
+                    mark_thread_seen(current_email, peer_email)
                     safe_rerun()
             else:
                 cols[3].markdown("—")
@@ -1005,6 +1122,9 @@ def conversation_view():
 
     me = current_email
     msgs = load_dm(me, peer)
+    # Viewing marks the thread as seen for me
+    mark_thread_seen(me, peer)
+
     if msgs:
         for m in sorted(msgs, key=lambda x: x.get("ts", ""), reverse=True):
             who = m.get("username") or m.get("from") or m.get("email") or "Unknown"
@@ -1036,6 +1156,8 @@ def conversation_view():
                 "text": txt
             })
             save_dm(me, peer, msgs)
+            # Sending implies seen for me
+            mark_thread_seen(me, peer)
             st.success("Message sent.")
             safe_rerun()
     if c2.button("Clear today's thread", type="secondary"):
@@ -1133,6 +1255,7 @@ def header_bar(data: Optional[UserData]):
             persist_all()
             if st.session_state.get("active_email"):
                 remove_active_user(st.session_state.get("active_email"))
+            clear_login_token()  # remove token so refresh won't auto-login
             st.session_state.active_email = None
             st.session_state.pass_hash = None
             st.session_state.data = None
@@ -1159,7 +1282,6 @@ def header_bar(data: Optional[UserData]):
 def main():
     ensure_session_state()
 
-    # Only proceed when this browser session is logged in
     if not st.session_state.get("active_email") or not st.session_state.get("data") or not getattr(st.session_state.get("data"), "settings", None):
         view_login()
         return
