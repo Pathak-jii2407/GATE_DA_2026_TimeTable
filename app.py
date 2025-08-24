@@ -48,13 +48,12 @@ def user_file(email: str) -> str:
 def draft_file(email: str) -> str:
     return os.path.join(DRAFT_DIR, f"{_safe(email)}_draft.json")
 
-AUTH_SESSION_FILE     = os.path.join(AUTH_DIR, "session.json")
 ACTIVE_USERS_FILE     = os.path.join(AUTH_DIR, "active_users.json")   # concurrent active users set
 GLOBAL_REGISTRY_FILE  = os.path.join(DATA_DIR, "users_registry.json") # all users
 DM_DIR                = os.path.join(DATA_DIR, "dm_threads")          # per-pair direct messages
 os.makedirs(DM_DIR, exist_ok=True)
 
-# CONFIG: max concurrent active sessions
+# CONFIG: max concurrent active sessions (you and friends)
 MAX_ACTIVE_USERS = 10
 
 # -------------------------------------------------------------
@@ -148,7 +147,7 @@ class Settings:
     startDate: str = date.today().isoformat()
     xp: int = 0
     badges: List[str] = field(default_factory=list)
-    username: str = ""
+    username: str = ""  # Display name
 
 @dataclass
 class UserData:
@@ -157,10 +156,10 @@ class UserData:
     logs: List[LogRow]
     syllabusProgress: Dict[str, bool]
     taskOrder: Dict[str, List[str]]
-    dayChats: Dict[str, str] = field(default_factory=dict)
+    dayChats: Dict[str, str] = field(default_factory=dict)  # per-day note/message
 
 # -------------------------------------------------------------
-# Auth & global helpers
+# Auth & global helpers (concurrent, per-session)
 # -------------------------------------------------------------
 def sha_bcrypt(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -225,30 +224,13 @@ def save_user(email: str, data: UserData, pass_hash: str):
     with open(user_file(email), "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
-def save_session(email: Optional[str], pass_hash: Optional[str]):
-    with open(AUTH_SESSION_FILE, "w", encoding="utf-8") as f:
-        json.dump({"email": email, "passHash": pass_hash}, f)
-
-def load_session() -> Tuple[Optional[str], Optional[str]]:
-    if not os.path.exists(AUTH_SESSION_FILE):
-        return None, None
-    try:
-        with open(AUTH_SESSION_FILE, "r", encoding="utf-8") as f:
-            s = json.load(f)
-        return s.get("email"), s.get("passHash")
-    except Exception:
-        return None, None
-
-# Active users set helpers
 def _load_active_users() -> List[str]:
     if not os.path.exists(ACTIVE_USERS_FILE):
         return []
     try:
         with open(ACTIVE_USERS_FILE, "r", encoding="utf-8") as f:
             arr = json.load(f)
-        if isinstance(arr, list):
-            return arr
-        return []
+        return arr if isinstance(arr, list) else []
     except Exception:
         return []
 
@@ -312,9 +294,8 @@ def ensure_user_in_registry(email: str, username: str = ""):
     reg["users"] = users
     save_registry(reg)
 
-# Direct messages helpers (per-pair)
+# Direct messages (per-pair, auto-pruned to today's only)
 def _dm_key(email_a: str, email_b: str) -> str:
-    # canonical key: sorted pair to share same thread file
     a, b = sorted([email_a, email_b])
     return f"{_safe(a)}__{_safe(b)}.json"
 
@@ -330,7 +311,6 @@ def load_dm(email_a: str, email_b: str) -> List[Dict[str, Any]]:
             msgs = json.load(f)
     except Exception:
         msgs = []
-    # prune to today's only
     today_str = date.today().isoformat()
     new_msgs = []
     for m in msgs:
@@ -398,30 +378,19 @@ def streak_days(data: UserData) -> int:
     return n
 
 # -------------------------------------------------------------
-# Session bootstrap
+# Session bootstrap (no global session file)
 # -------------------------------------------------------------
 def ensure_session_state():
     if "active_email" not in st.session_state:
-        email, ph = load_session()
-        st.session_state.active_email = email
-        st.session_state.pass_hash = ph
+        st.session_state.active_email = None
+    if "pass_hash" not in st.session_state:
+        st.session_state.pass_hash = None
+    if "data" not in st.session_state:
         st.session_state.data = None
-        if email and ph:
-            data, onfile_ph = load_user(email)
-            if data and onfile_ph == ph:
-                st.session_state.data = data
-            else:
-                save_session(None, None)
-                st.session_state.active_email = None
-                st.session_state.pass_hash = None
-                st.session_state.data = None
     if "auto_save" not in st.session_state:
         st.session_state.auto_save = True
     if "draft_rows" not in st.session_state:
-        if st.session_state.active_email:
-            st.session_state.draft_rows = load_draft(st.session_state.active_email)
-        else:
-            st.session_state.draft_rows = []
+        st.session_state.draft_rows = []
     if "timers" not in st.session_state:
         st.session_state.timers = {}
     if "deleted_buffer" not in st.session_state:
@@ -429,7 +398,7 @@ def ensure_session_state():
     if "order_state" not in st.session_state:
         st.session_state.order_state = {}
     if "dm_peer" not in st.session_state:
-        st.session_state.dm_peer = ""  # currently selected DM peer email
+        st.session_state.dm_peer = ""
 
 def persist_all():
     if st.session_state.get("active_email") and st.session_state.get("pass_hash") and st.session_state.get("data"):
@@ -437,7 +406,7 @@ def persist_all():
         save_draft(st.session_state.active_email, st.session_state.draft_rows)
 
 # -------------------------------------------------------------
-# Auth UI
+# Auth UI (no global remember; purely per-browser session)
 # -------------------------------------------------------------
 def view_login():
     st.header("Login to StudyTracker (Local)")
@@ -449,8 +418,6 @@ def view_login():
             if not email or not password:
                 st.error("Please enter email and password")
                 return
-
-            # concurrency: up to MAX_ACTIVE_USERS
             if not add_active_user(email):
                 active_list = _load_active_users()
                 st.error(f"Active user limit reached ({len(active_list)}/{MAX_ACTIVE_USERS}). Try again later.")
@@ -469,7 +436,6 @@ def view_login():
             st.session_state.active_email = email
             st.session_state.pass_hash = ph
             st.session_state.data = data
-            save_session(email, ph)
             st.session_state.draft_rows = load_draft(email)
             ensure_user_in_registry(email, data.settings.username or "")
             st.toast("Logged in")
@@ -493,7 +459,6 @@ def view_login():
             phash = sha_bcrypt(password)
             data = default_user_data()
             save_user(email, data, phash)
-            save_session(email, phash)
             st.session_state.active_email = email
             st.session_state.pass_hash = phash
             st.session_state.data = data
@@ -503,7 +468,7 @@ def view_login():
             safe_rerun()
 
 # -------------------------------------------------------------
-# KPI + Draft management (same as your last version; omitted for brevity)
+# KPI + Draft management
 # -------------------------------------------------------------
 def kpi_cards(data: UserData):
     try:
@@ -547,7 +512,6 @@ def kpi_cards(data: UserData):
     st.progress(min(1.0, today_hours / max(1e-6, goal_val)))
 
 def compute_user_avgs(email: str) -> Tuple[float, float]:
-    # Read that user's file and compute averages
     data, _ = load_user(email)
     if not data:
         return 0.0, 0.0
@@ -625,7 +589,7 @@ def save_log(data: UserData):
     st.toast("Log saved")
 
 # -------------------------------------------------------------
-# Today / Syllabus / Logs / Dashboard (same as earlier, omitted where unchanged)
+# Today View
 # -------------------------------------------------------------
 def timer_ui(subject: str, data: UserData):
     tmap = st.session_state.get("timers", {})
@@ -688,6 +652,7 @@ def reorder_ui(data: UserData):
     subjects = data.plan.get(d, [])
     key = f"day{d}"
     current = data.taskOrder.get(key, subjects[:])
+
     st.caption("Reorder with arrow buttons and Save.")
     arr = st.session_state["order_state"].setdefault(key, current[:])
 
@@ -742,6 +707,7 @@ def today_view(data: Optional[UserData]):
     st.session_state.auto_save = a5.toggle("Auto-save on Change", value=st.session_state.get("auto_save", True))
 
     st.divider()
+
     st.subheader("Daily Note")
     tdy = today_iso()
     msg = data.dayChats.get(tdy, "")
@@ -782,10 +748,14 @@ def today_view(data: Optional[UserData]):
 
             upsert_draft(subject, hours, done_checkbox, mode, priority, notes, pomos)
 
+# -------------------------------------------------------------
+# Syllabus View
+# -------------------------------------------------------------
 def syllabus_view(data: Optional[UserData]):
     if not data or not getattr(data, "settings", None):
         st.warning("No user data loaded. Please log in again.")
         return
+
     st.header("DA Syllabus Map")
     for cat, items in SYLLABUS.items():
         with st.expander(cat, expanded=False):
@@ -798,10 +768,14 @@ def syllabus_view(data: Optional[UserData]):
     if st.session_state.get("auto_save", True):
         persist_all()
 
+# -------------------------------------------------------------
+# Logs View
+# -------------------------------------------------------------
 def logs_view(data: Optional[UserData]):
     if not data or not getattr(data, "settings", None):
         st.warning("No user data loaded. Please log in again.")
         return
+
     st.header("Logs")
     try:
         logs_df = pd.DataFrame([asdict(r) for r in data.logs]) if data.logs else pd.DataFrame(columns=[
@@ -809,10 +783,12 @@ def logs_view(data: Optional[UserData]):
         ])
     except Exception:
         logs_df = pd.DataFrame(columns=["Date","Subject","Completed","Hours","Notes","Priority","Mode","Pomodoros","XP"])
+
     if logs_df.empty:
         st.info("No logs yet.")
     else:
         st.dataframe(logs_df, use_container_width=True, height=420)
+
     st.subheader("Manage Rows")
     del_idx = st.number_input("Row index to delete", min_value=0, step=1, value=0 if not logs_df.empty else 0, disabled=logs_df.empty)
     c1, c2, c3 = st.columns(3)
@@ -920,10 +896,14 @@ def logs_view(data: Optional[UserData]):
             except Exception as e:
                 st.error(f"Import failed: {e}")
 
+# -------------------------------------------------------------
+# Dashboard View
+# -------------------------------------------------------------
 def dashboard_view(data: Optional[UserData]):
     if not data or not getattr(data, "settings", None):
         st.warning("No user data loaded. Please log in again.")
         return
+
     st.header("Dashboard")
     try:
         logs_df = pd.DataFrame([asdict(r) for r in data.logs]) if data.logs else pd.DataFrame(columns=[
@@ -931,6 +911,7 @@ def dashboard_view(data: Optional[UserData]):
         ])
     except Exception:
         logs_df = pd.DataFrame(columns=["Date","Subject","Completed","Hours","Notes","Priority","Mode","Pomodoros","XP"])
+
     cA, cB = st.columns(2)
     with cA:
         st.subheader("Daily Hours")
@@ -956,6 +937,7 @@ def dashboard_view(data: Optional[UserData]):
             st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No data")
+
     cC, cD = st.columns(2)
     with cC:
         st.subheader("Completion Share")
@@ -969,6 +951,7 @@ def dashboard_view(data: Optional[UserData]):
             st.altair_chart(pie, use_container_width=True)
         else:
             st.info("No data")
+
     with cD:
         st.subheader("Last 7 Days")
         if not logs_df.empty:
@@ -985,7 +968,7 @@ def dashboard_view(data: Optional[UserData]):
             st.info("No data")
 
 # -------------------------------------------------------------
-# Conversation View (private DMs, up to 10 active users)
+# Conversation View (private DMs, up to MAX_ACTIVE_USERS active)
 # -------------------------------------------------------------
 def conversation_view():
     st.header("Conversation (Private)")
@@ -994,7 +977,6 @@ def conversation_view():
     reg = load_registry()
     users = reg.get("users", [])
 
-    # List users with averages and chat buttons
     st.subheader("Users")
     if not users:
         st.info("No registered users yet.")
@@ -1021,7 +1003,6 @@ def conversation_view():
         st.info("Select a user to start chatting.")
         return
 
-    # Show thread with selected peer
     me = current_email
     msgs = load_dm(me, peer)
     if msgs:
@@ -1033,7 +1014,6 @@ def conversation_view():
     else:
         st.info("No messages yet today with this user. Say hi!")
 
-    # Compose
     my_username = ""
     try:
         my_username = st.session_state.data.settings.username or ""
@@ -1151,10 +1131,8 @@ def header_bar(data: Optional[UserData]):
         hb1, hb2, hb3 = st.columns(3)
         if hb1.button("Logout", use_container_width=True):
             persist_all()
-            # remove from active users pool
             if st.session_state.get("active_email"):
                 remove_active_user(st.session_state.get("active_email"))
-            save_session(None, None)
             st.session_state.active_email = None
             st.session_state.pass_hash = None
             st.session_state.data = None
@@ -1181,6 +1159,7 @@ def header_bar(data: Optional[UserData]):
 def main():
     ensure_session_state()
 
+    # Only proceed when this browser session is logged in
     if not st.session_state.get("active_email") or not st.session_state.get("data") or not getattr(st.session_state.get("data"), "settings", None):
         view_login()
         return
