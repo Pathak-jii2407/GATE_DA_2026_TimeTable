@@ -1,8 +1,8 @@
-# app.py
 import json
 import os
 import time
 import bcrypt
+import io
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict, field
@@ -40,7 +40,7 @@ def draft_file(email: str) -> str:
     safe = email.replace("@", "_at_").replace(".", "_")
     return os.path.join(DRAFT_DIR, f"{safe}_draft.json")
 
-AUTH_SESSION_FILE = os.path.join(AUTH_DIR, "session.json")  # persist active_email + passhash
+AUTH_SESSION_FILE = os.path.join(AUTH_DIR, "session.json")
 
 # -------------------------------------------------------------
 # Syllabus + Default Plan
@@ -134,6 +134,7 @@ class Settings:
     startDate: str = date.today().isoformat()
     xp: int = 0
     badges: List[str] = field(default_factory=list)
+    username: str = ""  # NEW: display name
 
 @dataclass
 class UserData:
@@ -142,6 +143,7 @@ class UserData:
     logs: List[LogRow]
     syllabusProgress: Dict[str, bool]
     taskOrder: Dict[str, List[str]]
+    dayChats: Dict[str, str] = field(default_factory=dict)  # NEW: per-day note/message
 
 # -------------------------------------------------------------
 # Utils
@@ -161,7 +163,8 @@ def default_user_data() -> UserData:
         plan=json.loads(json.dumps(DEFAULT_PLAN)),
         logs=[],
         syllabusProgress={},
-        taskOrder={}
+        taskOrder={},
+        dayChats={}
     )
 
 def load_user(email: str) -> Tuple[Optional[UserData], Optional[str]]:
@@ -178,7 +181,8 @@ def load_user(email: str) -> Tuple[Optional[UserData], Optional[str]]:
         logs = [LogRow(**r) for r in d.get("logs", [])]
         syllabus = d.get("syllabusProgress", {})
         order = d.get("taskOrder", {})
-        return UserData(settings, plan, logs, syllabus, order), passhash
+        day_chats = d.get("dayChats", {})
+        return UserData(settings, plan, logs, syllabus, order, day_chats), passhash
     except Exception:
         return None, None
 
@@ -190,7 +194,8 @@ def save_user(email: str, data: UserData, pass_hash: str):
             "plan": data.plan,
             "logs": [asdict(r) for r in data.logs],
             "syllabusProgress": data.syllabusProgress,
-            "taskOrder": data.taskOrder
+            "taskOrder": data.taskOrder,
+            "dayChats": data.dayChats,
         }
     }
     with open(user_file(email), "w", encoding="utf-8") as f:
@@ -254,11 +259,10 @@ def streak_days(data: UserData) -> int:
     by_date: Dict[str, float] = {}
     for r in data.logs:
         by_date[r.Date] = by_date.get(r.Date, 0.0) + float(r.Hours or 0.0)
-    # Include today's draft in streak computation preview
+    # include draft preview for streak
     if st.session_state.active_email:
         for r in st.session_state.draft_rows:
             by_date[r["Date"]] = by_date.get(r["Date"], 0.0) + float(r.get("Hours") or 0.0)
-
     n = 0
     cur = date.today()
     for _ in range(365):
@@ -275,16 +279,12 @@ def streak_days(data: UserData) -> int:
 # -------------------------------------------------------------
 def ensure_session_state():
     if "active_email" not in st.session_state:
-        # Try restore from disk
         email, ph = load_session()
         st.session_state.active_email = email
         st.session_state.pass_hash = ph
         if email and ph:
             data, onfile_ph = load_user(email)
-            if data and onfile_ph == ph:
-                st.session_state.data = data
-            else:
-                st.session_state.data = None
+            st.session_state.data = data if (data and onfile_ph == ph) else None
         else:
             st.session_state.data = None
     if "auto_save" not in st.session_state:
@@ -295,10 +295,13 @@ def ensure_session_state():
         else:
             st.session_state.draft_rows = []
     if "timers" not in st.session_state:
-        st.session_state.timers = {}  # subject timers
+        st.session_state.timers = {}
+    if "deleted_buffer" not in st.session_state:
+        st.session_state.deleted_buffer = []
+    if "order_state" not in st.session_state:
+        st.session_state.order_state = {}
 
 def persist_all():
-    # save user + draft atomically on each important change
     if st.session_state.active_email and st.session_state.pass_hash and st.session_state.data:
         save_user(st.session_state.active_email, st.session_state.data, st.session_state.pass_hash)
         save_draft(st.session_state.active_email, st.session_state.draft_rows)
@@ -354,34 +357,40 @@ def view_login():
 # KPI + Draft management
 # -------------------------------------------------------------
 def kpi_cards(data: UserData):
-    # Use saved logs + draft (today) to show live KPIs
     logs_df = pd.DataFrame([asdict(r) for r in data.logs]) if data.logs else pd.DataFrame(columns=[
         "Date","Subject","Completed","Hours","Notes","Priority","Mode","Pomodoros","XP"
     ])
     draft_df = pd.DataFrame(st.session_state.draft_rows) if st.session_state.draft_rows else pd.DataFrame(columns=logs_df.columns)
 
-    # Today totals (from draft)
     today = today_iso()
     today_hours = float(draft_df[draft_df["Date"] == today]["Hours"].sum() if not draft_df.empty else 0.0)
     today_completed = int(draft_df[(draft_df["Date"] == today) & (draft_df["Completed"] == True)].shape[0] if not draft_df.empty else 0)
 
-    # Avg hours/day from combined saved logs (draft excluded to avoid partial duplicates)
-    avg_hours = 0.0
+    avg_all = 0.0
     if not logs_df.empty:
-        avg_hours = logs_df.groupby("Date")["Hours"].sum().mean()
+        avg_all = logs_df.groupby("Date")["Hours"].sum().mean()
+
+    avg_7 = 0.0
+    if not logs_df.empty:
+        last7 = [(date.today() - timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
+        ddf = logs_df.groupby("Date", as_index=False)["Hours"].sum()
+        merged = pd.DataFrame({"Date": last7}).merge(ddf, on="Date", how="left").fillna({"Hours": 0})
+        avg_7 = float(merged["Hours"].mean())
+
+    display_name = (data.settings.username or st.session_state.active_email or "").strip()
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Goal", f"{data.settings.dailyGoal:.2f}h")
-    c2.metric("Today", f"{today_hours:.2f}h")
-    c3.metric("Completed", str(today_completed))
+    c2.metric(f"Today ({display_name})", f"{today_hours:.2f}h")
+    c3.metric("Completed Today", str(today_completed))
     c4.metric("Streak", str(streak_days(data)))
-    c5.metric("Avg Hours/Day", f"{avg_hours:.2f}h")
+    c5.metric("Avg Hours (All-time)", f"{avg_all:.2f}h")
 
+    st.caption(f"Avg Hours (Last 7d): {avg_7:.2f}h")
     st.progress(min(1.0, today_hours / max(1e-6, data.settings.dailyGoal)))
 
 def upsert_draft(subject: str, hours: float, done: bool, mode: str, priority: str, notes: str, pomos: int):
-    # Enforce rule: if hours < 3h, Completed must be False
-    completed = bool(done and hours >= 3.0)
+    completed = bool(done and float(hours) >= 3.0)
     row = {
         "Date": today_iso(),
         "Subject": subject,
@@ -419,9 +428,7 @@ def save_log(data: UserData):
     for r in todays:
         data.logs.append(LogRow(**r))
         data.settings.xp += int(r.get("XP", 0))
-    # Keep draft for future edits but clear today's if desired:
     st.session_state.draft_rows = [r for r in st.session_state.draft_rows if r["Date"] != today]
-    # Badges
     total_hours = sum((float(l.Hours or 0.0) for l in data.logs), 0.0)
     badges = set(data.settings.badges or [])
     for threshold, name in [(10, "Rookie"), (50, "Committed"), (100, "Centurion"), (200, "Marathoner")]:
@@ -485,7 +492,6 @@ def timer_ui(subject: str, data: UserData):
         t["running"] = False
         st.toast(f"Timer stopped: {subject}")
 
-    # Suggested hours capped 10h
     hrs = min(10.0, round(t["elapsed_ms"] / 3600000.0, 2))
     return hrs, t["pomos"]
 
@@ -498,8 +504,6 @@ def reorder_ui(data: UserData):
 
     st.caption("Reorder with arrow buttons and Save.")
 
-    if "order_state" not in st.session_state:
-        st.session_state.order_state = {}
     arr = st.session_state.order_state.setdefault(key, current[:])
 
     def move(i, di):
@@ -546,6 +550,26 @@ def today_view(data: UserData):
     st.session_state.auto_save = a5.toggle("Auto-save on Change", value=st.session_state.auto_save)
 
     st.divider()
+
+    # Daily message ("chat per day")
+    st.subheader("Daily Note")
+    tdy = today_iso()
+    msg = data.dayChats.get(tdy, "")
+    new_msg = st.text_area("Today's note", value=msg, height=80, placeholder="How did study go? Wins, blockers, next steps...")
+    cmsg1, cmsg2 = st.columns(2)
+    if cmsg1.button("Save Today Note"):
+        data.dayChats[tdy] = new_msg.strip()
+        st.toast("Today's note saved")
+        if st.session_state.auto_save:
+            persist_all()
+    if cmsg2.button("Delete Today Note", type="secondary"):
+        if tdy in data.dayChats:
+            del data.dayChats[tdy]
+            st.toast("Today's note deleted")
+            if st.session_state.auto_save:
+                persist_all()
+
+    st.divider()
     reorder_ui(data)
     st.divider()
 
@@ -553,19 +577,19 @@ def today_view(data: UserData):
         with st.container(border=True):
             st.subheader(subject)
             st.caption("Enter hours and details. Completed requires ≥ 3h.")
-            # Timer and suggested hours
             sugg, pomos = timer_ui(subject, data)
 
             c1, c2, c3, c4 = st.columns([1.2,1.2,1.2,1.2])
             hours = c1.number_input("Hours", min_value=0.0, max_value=10.0, step=0.25, value=float(sugg), key=f"hrs_{subject}")
             mode = c2.selectbox("Mode", ["Deep Work","Review","Practice","PYQs","Test"], key=f"mode_{subject}")
             priority = c3.selectbox("Priority", ["Low","Medium","High"], index=1, key=f"prio_{subject}")
-            # The checkbox value is advisory; true completion is enforced (hours>=3)
             done_checkbox = c4.checkbox("Completed (≥3h)", key=f"done_{subject}")
+
+            if float(hours) < 3.0 and done_checkbox:
+                st.warning("Completion requires ≥ 3.0 hours. It will be saved as not completed.")
 
             notes = st.text_area("Notes", value="", height=80, key=f"notes_{subject}", placeholder="Concepts, mistakes, formulas, tasks...")
 
-            # Upsert draft and persist
             upsert_draft(subject, hours, done_checkbox, mode, priority, notes, pomos)
 
 # -------------------------------------------------------------
@@ -599,15 +623,10 @@ def logs_view(data: UserData):
     else:
         st.dataframe(logs_df, use_container_width=True, height=420)
 
-    # Row delete controls
     st.subheader("Manage Rows")
-    if "deleted_buffer" not in st.session_state:
-        st.session_state.deleted_buffer = []
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    # Delete by selecting an exact row index
-    del_idx = c1.number_input("Row index to delete", min_value=0, step=1, value=0 if not logs_df.empty else 0, disabled=logs_df.empty)
-    if c2.button("Delete Row", type="secondary", disabled=logs_df.empty):
+    del_idx = st.number_input("Row index to delete", min_value=0, step=1, value=0 if not logs_df.empty else 0, disabled=logs_df.empty)
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Delete Row", type="secondary", disabled=logs_df.empty):
         if 0 <= del_idx < len(data.logs):
             removed = data.logs.pop(int(del_idx))
             st.session_state.deleted_buffer.append(removed)
@@ -615,18 +634,24 @@ def logs_view(data: UserData):
             if st.session_state.auto_save:
                 persist_all()
             st.rerun()
-
-    if c3.button("Undo Last Delete", disabled=(len(st.session_state.deleted_buffer)==0)):
+    if c2.button("Undo Last Delete", disabled=(len(st.session_state.deleted_buffer)==0)):
         rec = st.session_state.deleted_buffer.pop()
         data.logs.append(rec)
         st.toast("Undo successful")
         if st.session_state.auto_save:
             persist_all()
         st.rerun()
+    if c3.button("🗑 Clear All Logs", type="secondary", disabled=logs_df.empty):
+        data.logs = []
+        st.session_state.deleted_buffer = []
+        st.toast("Logs cleared")
+        if st.session_state.auto_save:
+            persist_all()
+        st.rerun()
 
-    # Export / Import
     st.subheader("Import/Export")
-    e1, e2, e3, e4 = st.columns(4)
+
+    e1, e2, e3, e4, e5 = st.columns(5)
 
     with e1:
         if st.button("⬇ Export CSV", use_container_width=True):
@@ -634,7 +659,6 @@ def logs_view(data: UserData):
             st.download_button("Download study_log.csv", data=csv, file_name="study_log.csv", mime="text/csv", use_container_width=True)
 
     with e2:
-        # Save JSON backup (full)
         if st.button("💾 Save JSON (Full Backup)", use_container_width=True):
             payload = {
                 "email": st.session_state.active_email,
@@ -643,26 +667,57 @@ def logs_view(data: UserData):
                     "plan": st.session_state.data.plan,
                     "logs": [asdict(r) for r in st.session_state.data.logs],
                     "syllabusProgress": st.session_state.data.syllabusProgress,
-                    "taskOrder": st.session_state.data.taskOrder
+                    "taskOrder": st.session_state.data.taskOrder,
+                    "dayChats": st.session_state.data.dayChats,
                 }
             }
             st.download_button("Download data.json", data=json.dumps(payload, indent=2),
                                file_name="data.json", mime="application/json", use_container_width=True)
 
     with e3:
-        # Save Excel (XLSX) — logs only
-        if st.button("💾 Save Excel (Logs)", use_container_width=True):
-            xls = pd.ExcelWriter("study_log.xlsx", engine="openpyxl")
-            (logs_df if not logs_df.empty else pd.DataFrame(columns=[
-                "Date","Subject","Completed","Hours","Notes","Priority","Mode","Pomodoros","XP"
-            ])).to_excel(xls, index=False, sheet_name="Logs")
-            xls.close()
-            with open("study_log.xlsx", "rb") as f:
-                st.download_button("Download study_log.xlsx", data=f.read(), file_name="study_log.xlsx",
-                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-            os.remove("study_log.xlsx")
+        if st.button("💾 Save Excel (Logs Only)", use_container_width=True):
+            out = io.BytesIO()
+            with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
+                (logs_df if not logs_df.empty else pd.DataFrame(columns=[
+                    "Date","Subject","Completed","Hours","Notes","Priority","Mode","Pomodoros","XP"
+                ])).to_excel(writer, index=False, sheet_name="Logs")
+            st.download_button("Download study_log.xlsx", data=out.getvalue(),
+                               file_name="study_log.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               use_container_width=True)
 
     with e4:
+        if st.button("💾 Save Excel (Full Export)", use_container_width=True):
+            out = io.BytesIO()
+            with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
+                # Logs sheet
+                (logs_df if not logs_df.empty else pd.DataFrame(columns=[
+                    "Date","Subject","Completed","Hours","Notes","Priority","Mode","Pomodoros","XP"
+                ])).to_excel(writer, index=False, sheet_name="Logs")
+                # Profile sheet
+                profile_df = pd.DataFrame([{
+                    "Email": st.session_state.active_email or "",
+                    "Username": st.session_state.data.settings.username or "",
+                    "DailyGoal": st.session_state.data.settings.dailyGoal,
+                    "PomoWork": st.session_state.data.settings.pomoWork,
+                    "PomoBreak": st.session_state.data.settings.pomoBreak,
+                    "StartDate": st.session_state.data.settings.startDate,
+                    "XP": st.session_state.data.settings.xp,
+                    "Badges": ", ".join(st.session_state.data.settings.badges or []),
+                }])
+                profile_df.to_excel(writer, index=False, sheet_name="Profile")
+                # Day notes
+                if st.session_state.data.dayChats:
+                    day_notes_df = pd.DataFrame([{"Date": k, "Note": v} for k, v in sorted(st.session_state.data.dayChats.items())])
+                else:
+                    day_notes_df = pd.DataFrame(columns=["Date","Note"])
+                day_notes_df.to_excel(writer, index=False, sheet_name="DayNotes")
+            st.download_button("Download study_export.xlsx", data=out.getvalue(),
+                               file_name="study_export.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               use_container_width=True)
+
+    with e5:
         uploaded = st.file_uploader("⬆ Import data.json", type=["json"], label_visibility="collapsed")
         if uploaded is not None and st.button("Import", use_container_width=True):
             try:
@@ -676,7 +731,8 @@ def logs_view(data: UserData):
                     logs = [LogRow(**r) for r in d.get("logs", [])]
                     syllabus = d.get("syllabusProgress", {})
                     order = d.get("taskOrder", {})
-                    st.session_state.data = UserData(settings, plan, logs, syllabus, order)
+                    day_chats = d.get("dayChats", {})
+                    st.session_state.data = UserData(settings, plan, logs, syllabus, order, day_chats)
                     st.toast("Imported data.json")
                     persist_all()
                     st.rerun()
@@ -698,7 +754,8 @@ def dashboard_view(data: UserData):
         if not logs_df.empty:
             ddf = logs_df.groupby("Date", as_index=False)["Hours"].sum().sort_values("Date")
             chart = alt.Chart(ddf).mark_line(point=True).encode(
-                x="Date:T", y=alt.Y("Hours:Q", scale=alt.Scale(domain=[0, max(3.0, float(ddf['Hours'].max()))])),
+                x="Date:T",
+                y=alt.Y("Hours:Q", scale=alt.Scale(domain=[0, max(3.0, float(ddf['Hours'].max()))])),
                 tooltip=["Date","Hours"]
             ).properties(height=260)
             st.altair_chart(chart, use_container_width=True)
@@ -710,7 +767,8 @@ def dashboard_view(data: UserData):
         if not logs_df.empty:
             sdf = logs_df.groupby("Subject", as_index=False)["Hours"].sum().sort_values("Hours", ascending=False)
             chart = alt.Chart(sdf).mark_bar().encode(
-                x="Hours:Q", y=alt.Y("Subject:N", sort="-x"),
+                x="Hours:Q",
+                y=alt.Y("Subject:N", sort="-x"),
                 tooltip=["Subject","Hours"]
             ).properties(height=260)
             st.altair_chart(chart, use_container_width=True)
@@ -771,6 +829,7 @@ def settings_view(data: UserData):
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("General")
+        uname = st.text_input("Username (display name)", value=data.settings.username or "")
         g1, g2 = st.columns(2)
         daily_goal = g1.number_input("Daily Goal (hrs)", min_value=0.0, step=0.5, value=float(data.settings.dailyGoal))
         theme = g2.selectbox("Theme", ["dark","light"], index=(0 if data.settings.theme=="dark" else 1))
@@ -780,6 +839,7 @@ def settings_view(data: UserData):
 
         s1, s2, s3 = st.columns(3)
         if s1.button("Save", type="primary"):
+            data.settings.username = uname.strip()
             data.settings.dailyGoal = float(daily_goal)
             data.settings.theme = theme
             data.settings.pomoWork = int(pomo_work)
@@ -811,7 +871,8 @@ def header_bar(data: UserData):
         st.markdown("### StudyTracker · Data Science & AI")
         st.caption("GATE DA 2026")
     with right:
-        st.write(f"👤 {st.session_state.active_email or ''}")
+        display_name = (data.settings.username or st.session_state.active_email or "").strip()
+        st.write(f"👤 {display_name}")
         st.write(f"📅 {today_iso()}")
         hb1, hb2, hb3 = st.columns(3)
         if hb1.button("Logout", use_container_width=True):
@@ -822,6 +883,7 @@ def header_bar(data: UserData):
             st.session_state.data = None
             st.session_state.draft_rows = []
             st.session_state.timers = {}
+            st.session_state.deleted_buffer = []
             st.toast("Logged out")
             st.rerun()
         if hb2.button("🌗 Theme", use_container_width=True):
@@ -859,7 +921,6 @@ def main():
     with t5:
         settings_view(data)
 
-    # Final auto-persist
     if st.session_state.auto_save:
         persist_all()
 
